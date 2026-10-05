@@ -230,6 +230,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -1536,6 +1538,21 @@ fun BitChordDesktopApp() {
         playbackEngine.togglePlayPause()
         partySync.onLocalIntent()
     }
+
+    // Space, from anywhere in the window — see [DesktopGlobalKeys]. Refreshed on every composition so
+    // it always sees the current track.
+    val focusManager = LocalFocusManager.current
+    SideEffect {
+        DesktopGlobalKeys.togglePlayPause = {
+            if (selectedSong != null) {
+                togglePlayPauseFromUser()
+                true
+            } else {
+                false
+            }
+        }
+    }
+    DisposableEffect(Unit) { onDispose { DesktopGlobalKeys.togglePlayPause = null } }
     fun playFromUser() {
         if (DesktopListenTogether.state.value.controlsLocked) {
             if (!playbackEngine.state.value.isPlaying) partySync.handleLockedPlayPause()
@@ -2864,15 +2881,6 @@ fun BitChordDesktopApp() {
                     )
                 },
                 modifier = Modifier.onPreviewKeyEvent { event ->
-                    // Space plays and pauses wherever the focus is, so a click on a menu or
-                    // button doesn't turn the key into a second press of it. Typing is left
-                    // alone, and with nothing loaded Space keeps its usual job.
-                    if (event.key == Key.Spacebar && !event.isAltPressed && !event.isCtrlPressed &&
-                        !event.isMetaPressed && !TextEntryFocus.active && selectedSong != null
-                    ) {
-                        if (event.type == KeyEventType.KeyUp) togglePlayPauseFromUser()
-                        return@onPreviewKeyEvent true
-                    }
                     if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                     when (event.key) {
                         Key.MediaPlayPause -> {
@@ -2918,6 +2926,10 @@ fun BitChordDesktopApp() {
                         }
                         else -> false
                     }
+                }.pointerInput(Unit) {
+                    // A click on nothing in particular lets go of a text box that still holds the focus, so
+                    // Space and the other whole-window keys are not left typing into it.
+                    detectTapGestures { focusManager.clearFocus() }
                 },
                 topBar = { compact ->
                     DesktopTopBar(
@@ -2944,6 +2956,10 @@ fun BitChordDesktopApp() {
                             persistence.saveString("repeat_mode", it.name)
                         },
                         onOpenNowPlaying = { overlays.nowPlaying = true },
+                        onSeekFraction = { fraction ->
+                            val duration = playback.durationMs
+                            if (duration > 0) seekPlayer((fraction * duration).toLong())
+                        },
                         onVolumeChange = {
                             volume = it
                             persistence.saveString("volume", it.toString())
@@ -3964,6 +3980,8 @@ private fun DesktopTopBar(
     onShuffleChange: (Boolean) -> Unit,
     onRepeatModeChange: (DesktopRepeatMode) -> Unit,
     onOpenNowPlaying: () -> Unit,
+    /** A click or drag on the progress line: where in the track, from 0 to 1. */
+    onSeekFraction: (Float) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onOpenAudioOutput: () -> Unit,
     onOpenLyrics: () -> Unit,
@@ -4153,18 +4171,53 @@ private fun DesktopTopBar(
                                     // the full width and pulses on the beat, as the player's
                                     // scrubber does, and reading either in draw keeps the frame
                                     // clock from recomposing the whole bar.
+                                    // The strip is taller than the line it draws, so it can be hit: a
+                                    // click seeks there and a drag scrubs, with the line thickening
+                                    // while it is held.
+                                    var scrubbing by remember { mutableStateOf<Float?>(null) }
+                                    val seekTo by rememberUpdatedState(onSeekFraction)
                                     Box(
                                         Modifier
                                             .align(Alignment.BottomStart)
                                             .padding(start = 44.dp)
                                             .fillMaxWidth()
-                                            .height(2.dp)
+                                            .height(SCRUB_STRIP_HEIGHT)
+                                            .pointerInput(Unit) {
+                                                detectTapGestures { at ->
+                                                    seekTo((at.x / size.width).coerceIn(0f, 1f))
+                                                }
+                                            }
+                                            .pointerInput(Unit) {
+                                                detectHorizontalDragGestures(
+                                                    onDragStart = { at ->
+                                                        scrubbing = (at.x / size.width).coerceIn(0f, 1f)
+                                                    },
+                                                    onHorizontalDrag = { change, _ ->
+                                                        scrubbing = (change.position.x / size.width).coerceIn(0f, 1f)
+                                                        change.consume()
+                                                    },
+                                                    onDragEnd = {
+                                                        scrubbing?.let(seekTo)
+                                                        scrubbing = null
+                                                    },
+                                                    onDragCancel = { scrubbing = null },
+                                                )
+                                            }
                                             .drawBehind {
-                                                val base = currentProgress.coerceIn(0f, 1f)
-                                                val fraction = base + (1f - base) * mixPulse.cover
+                                                val held = scrubbing
+                                                val base = (held ?: currentProgress).coerceIn(0f, 1f)
+                                                val fraction = if (held != null) {
+                                                    base
+                                                } else {
+                                                    base + (1f - base) * mixPulse.cover
+                                                }
+                                                val thickness = (if (held != null) 4.dp else 2.dp).toPx()
                                                 drawRect(
-                                                    color = Color.White.copy(alpha = mixPulse.alpha(0.48f)),
-                                                    size = Size(size.width * fraction, size.height),
+                                                    color = Color.White.copy(
+                                                        alpha = if (held != null) 0.9f else mixPulse.alpha(0.48f),
+                                                    ),
+                                                    topLeft = Offset(0f, size.height - thickness),
+                                                    size = Size(size.width * fraction, thickness),
                                                 )
                                             },
                                     )
@@ -6792,6 +6845,9 @@ internal fun Modifier.desktopWindowGlass(
 
 /** Enough to keep white text readable over a bright wallpaper, little enough to let it through. */
 private const val WINDOW_GLASS_TINT = 0.28f
+
+/** How tall the strip along the now-playing pill is that a click or drag on seeks. */
+private val SCRUB_STRIP_HEIGHT = 12.dp
 
 /**
  * The separators in the window's chrome. Acrylic lets the wallpaper through bright, and the solid

@@ -13,6 +13,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -146,9 +148,14 @@ private fun desktopMain() = application {
                 close = { if (DesktopWindowVisibility.onCloseRequest()) exitApplication() },
             )
         }
+        LaunchedEffect(Unit) { DesktopGlobalKeys.install() }
+        // The interface is drawn at the listener's chosen size (Ctrl and plus, minus or zero).
+        val uiScale by DesktopUiScale.scale.collectAsState()
+        val density = LocalDensity.current
         CompositionLocalProvider(
             LocalDesktopWindowActions provides actions,
             LocalDesktopWindowScope provides this,
+            LocalDensity provides Density(density.density * uiScale, density.fontScale),
         ) {
             BitChordDesktopApp()
         }

@@ -13,6 +13,15 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,6 +97,24 @@ internal fun DesktopPlayerSheet(
                 ),
         ) {
             content(windowWidth, windowHeight)
+            // Escape and the drag work, but nothing on screen said so: a button for the same thing,
+            // where the eye goes to look for one.
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = BACK_BUTTON_INSET, top = BACK_BUTTON_INSET)
+                    .size(BACK_BUTTON_SIZE)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = DesktopStrings["d_close_player", "Close player"],
+                    tint = Color.White,
+                )
+            }
             // The handle the landscape player draws at its top edge, made to do
             // on a click what it promises for a drag.
             Box(
@@ -111,4 +138,6 @@ private const val SHEET_SETTLE_MS = 220
 private const val DISMISS_FRACTION = 0.25f
 private const val DISMISS_VELOCITY = 1_600f
 private const val HANDLE_HIT_WIDTH_FRACTION = 0.2f
+private val BACK_BUTTON_SIZE = 40.dp
+private val BACK_BUTTON_INSET = 20.dp
 private val HANDLE_HIT_HEIGHT = 24.dp
