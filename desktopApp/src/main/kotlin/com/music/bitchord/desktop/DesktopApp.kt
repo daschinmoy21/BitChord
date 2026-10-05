@@ -139,6 +139,8 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.LibraryAdd
+import androidx.compose.material.icons.rounded.LibraryAddCheck
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Language
@@ -275,6 +277,7 @@ import com.music.bitchord.data.model.CARD_ART_PX
 import com.music.bitchord.data.model.HEADER_ART_PX
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LibraryPage
+import com.music.bitchord.data.model.LibraryState
 import com.music.bitchord.data.model.LikeStatus
 import com.music.bitchord.data.model.MoodGenre
 import com.music.bitchord.data.model.MoodGenreSection
@@ -3697,6 +3700,7 @@ fun BitChordDesktopApp() {
                             collection = openedCollection!!,
                             loadingMore = collectionLoadingMore,
                             onLoadMore = ::loadMoreCollectionSongs,
+                            onLibraryChanged = { libraryStale = true },
                             onRename = { overlays.rename = true }.takeIf { openedCollection?.owned == true },
                             onShare = openedCollection
                                 ?.takeIf { it.type == BrowseType.ALBUM || it.type == BrowseType.PLAYLIST }
@@ -6418,6 +6422,8 @@ private fun DesktopCollectionPage(
     collection: DesktopCollection,
     loadingMore: Boolean,
     onLoadMore: () -> Unit,
+    /** Called once an album or playlist has been saved to the library or taken out, so Library reloads. */
+    onLibraryChanged: () -> Unit,
     /** The three edits only a playlist's owner is offered. */
     onRename: (() -> Unit)?,
     onDelete: (() -> Unit)?,
@@ -6449,6 +6455,37 @@ private fun DesktopCollectionPage(
         }
     }
     var moreOpen by remember(collection.browseId) { mutableStateOf(false) }
+
+    // Whether this album or playlist is in the account's library, and the playlist that saving it
+    // acts on — read off the page itself, as YouTube has no save verb for a release but "like".
+    // Null while unknown and for anything that cannot be saved: your own playlists, the auto
+    // playlists, and every page when signed out. The button is only there when it can work.
+    val canSave = (collection.type == BrowseType.ALBUM || collection.type == BrowseType.PLAYLIST) &&
+        collection.owned != true
+    var library by remember(collection.browseId) { mutableStateOf<LibraryState?>(null) }
+    val libraryScope = rememberCoroutineScope()
+    LaunchedEffect(collection.browseId, canSave) {
+        library = if (canSave) {
+            withContext(Dispatchers.IO) { YtMusicRepository.releaseLibraryState(collection.browseId).getOrNull() }
+        } else {
+            null
+        }
+    }
+    fun toggleLibrary() {
+        val current = library ?: return
+        val target = !current.saved
+        library = current.copy(saved = target)
+        libraryScope.launch {
+            val saved = withContext(Dispatchers.IO) { YtMusicRepository.setSaved(current.playlistId, target) }
+            if (saved.isSuccess) {
+                onLibraryChanged()
+            } else {
+                // Put back what the account still says, rather than leave a button that lies.
+                library = current
+                DesktopTrackLog.log("youtube: ${if (target) "saving" else "removing"} ${collection.title} failed: ${saved.exceptionOrNull()?.message}")
+            }
+        }
+    }
     val subtitleParts = collection.subtitle
         .split(" • ", " · ", " | ")
         .map(String::trim)
@@ -6556,6 +6593,17 @@ private fun DesktopCollectionPage(
                                 onClick = { if (songs.isNotEmpty()) onPlaySongs(songs, 0) },
                                 iconOnly = true,
                             )
+                            library?.let { state ->
+                                DesktopCircleButton(
+                                    if (state.saved) Icons.Rounded.LibraryAddCheck else Icons.Rounded.LibraryAdd,
+                                    if (state.saved) {
+                                        DesktopStrings["remove_from_library", "Remove from library"]
+                                    } else {
+                                        DesktopStrings["add_to_library", "Add to library"]
+                                    },
+                                    onClick = ::toggleLibrary,
+                                )
+                            }
                             DesktopCircleButton(
                                 if (searching) Icons.Rounded.Close else BitChordIcons.Search,
                                 if (searching) DesktopStrings["close_search", "Close search"] else DesktopStrings["search_this_list", "Search this list"],
