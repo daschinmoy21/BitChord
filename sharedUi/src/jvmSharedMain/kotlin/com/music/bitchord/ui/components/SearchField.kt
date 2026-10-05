@@ -113,7 +113,8 @@ fun SearchField(
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .reportsTextEntryFocus(),
             )
         }
         // Emptying the field is also how the recent searches are got back to,

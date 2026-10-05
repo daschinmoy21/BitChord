@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.ui.components.reportsTextEntryFocus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -362,7 +363,7 @@ internal fun DesktopSignInDialog(
                             .heightIn(min = 84.dp, max = 160.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(Color.White.copy(alpha = 0.08f))
-                            .padding(12.dp),
+                            .padding(12.dp).reportsTextEntryFocus(),
                     )
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),

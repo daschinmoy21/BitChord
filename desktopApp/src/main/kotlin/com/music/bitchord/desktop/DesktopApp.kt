@@ -1,11 +1,15 @@
 package com.music.bitchord.desktop
 
 import androidx.compose.foundation.lazy.LazyListState
+import com.music.bitchord.ui.components.TextEntryFocus
+import com.music.bitchord.ui.components.reportsTextEntryFocus
 import com.music.bitchord.ui.components.LocalShelfRowChrome
 import com.music.bitchord.ui.components.ShelfRowChrome
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.pointer.isBackPressed
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -2859,6 +2863,15 @@ fun BitChordDesktopApp() {
                     )
                 },
                 modifier = Modifier.onPreviewKeyEvent { event ->
+                    // Space plays and pauses wherever the focus is, so a click on a menu or
+                    // button doesn't turn the key into a second press of it. Typing is left
+                    // alone, and with nothing loaded Space keeps its usual job.
+                    if (event.key == Key.Spacebar && !event.isAltPressed && !event.isCtrlPressed &&
+                        !event.isMetaPressed && !TextEntryFocus.active && selectedSong != null
+                    ) {
+                        if (event.type == KeyEventType.KeyUp) togglePlayPauseFromUser()
+                        return@onPreviewKeyEvent true
+                    }
                     if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                     when (event.key) {
                         Key.MediaPlayPause -> {
@@ -4563,7 +4576,7 @@ internal fun DesktopSearchField(
                     } else {
                         false
                     }
-                },
+                }.reportsTextEntryFocus(),
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
             cursorBrush = SolidColor(DesktopAccent),
@@ -6253,7 +6266,7 @@ private fun DesktopSourceEditorDialog(
                         baseUrl = it
                         message = null
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().reportsTextEntryFocus(),
                     label = { Text(DesktopStrings["d_addon_url", "Addon URL"]) },
                     placeholder = { Text("https://example.com/addon") },
                     singleLine = true,
@@ -6270,7 +6283,7 @@ private fun DesktopSourceEditorDialog(
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().reportsTextEntryFocus(),
                     label = { Text(DesktopStrings["d_name_optional", "Name (optional)"]) },
                     placeholder = { Text(DesktopStrings["d_my_music_source", "My music source"]) },
                     singleLine = true,

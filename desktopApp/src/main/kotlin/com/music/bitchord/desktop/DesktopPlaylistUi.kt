@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.ui.components.reportsTextEntryFocus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -216,7 +217,7 @@ private fun NewPlaylistForm(
                 cursorBrush = SolidColor(DesktopAccent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).reportsTextEntryFocus(),
             )
         }
         if (name.isNotEmpty()) {
@@ -289,7 +290,7 @@ internal fun DesktopRenamePlaylistDialog(
                 cursorBrush = SolidColor(DesktopAccent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submit() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).reportsTextEntryFocus(),
             )
         }
         DialogButtons(

@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.ui.components.reportsTextEntryFocus
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -276,7 +277,7 @@ private fun DialogField(
                 visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
                 keyboardOptions = KeyboardOptions(imeAction = imeAction),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() }),
-                modifier = modifier.fillMaxWidth(),
+                modifier = modifier.fillMaxWidth().reportsTextEntryFocus(),
             )
         }
         if (value.isNotEmpty() && enabled) {
