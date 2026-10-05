@@ -23,6 +23,9 @@ cp -a "$APP_DIR_SRC/." "$APPDIR/usr/"
 # The mount point differs every run, so nothing may be hard-coded.
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/bin/sh
+# Java under XWayland compositors (niri, sway, ...) assumes a reparenting window manager and never
+# passes a resize on to the content, so the UI stays at its opening size. Must be set before the JVM starts.
+[ -n "$WAYLAND_DISPLAY" ] && export _JAVA_AWT_WM_NONREPARENTING="${_JAVA_AWT_WM_NONREPARENTING:-1}"
 HERE="$(dirname "$(readlink -f "$0")")"
 exec "$HERE/usr/bin/BitChord" "$@"
 APPRUN
