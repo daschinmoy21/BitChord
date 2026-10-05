@@ -1,8 +1,12 @@
 package com.music.bitchord.desktop
 
+import androidx.compose.ui.focus.FocusManager
+import com.music.bitchord.ui.components.TextEntryFocus
 import java.awt.event.KeyEvent
+import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -79,5 +83,78 @@ class DesktopGlobalKeysTest {
     fun `the steps run from small to large and include normal size`() {
         assertTrue(DesktopUiScale.STEPS.contains(1.0f))
         assertEquals(DesktopUiScale.STEPS.sorted(), DesktopUiScale.STEPS)
+    }
+}
+
+/** The pieces that keep a Space (and its typed echo) from reaching what it was taken from. */
+class DesktopSpaceKeystrokeTest {
+
+    @Test
+    fun `a typed event has no key code, so it is told apart by its character`() {
+        assertTrue(DesktopGlobalKeys.isPartOfSpace(KeyEvent.KEY_TYPED, KeyEvent.VK_UNDEFINED, ' '))
+        assertFalse(DesktopGlobalKeys.isPartOfSpace(KeyEvent.KEY_TYPED, KeyEvent.VK_UNDEFINED, 'a'))
+    }
+
+    @Test
+    fun `the typed echo of a zoom key is taken, and nothing else`() {
+        "=+-0".forEach { assertTrue(DesktopGlobalKeys.isZoomTyped(it, ctrl = true, alt = false, meta = false)) }
+        // Without Ctrl they are ordinary text.
+        "=+-0".forEach { assertFalse(DesktopGlobalKeys.isZoomTyped(it, ctrl = false, alt = false, meta = false)) }
+        assertFalse(DesktopGlobalKeys.isZoomTyped('a', ctrl = true, alt = false, meta = false))
+        assertFalse(DesktopGlobalKeys.isZoomTyped('=', ctrl = true, alt = true, meta = false))
+        assertFalse(DesktopGlobalKeys.isZoomTyped('=', ctrl = true, alt = false, meta = true))
+    }
+
+    @Test
+    fun `pressed and released events are told apart by their key code`() {
+        assertTrue(DesktopGlobalKeys.isPartOfSpace(KeyEvent.KEY_PRESSED, KeyEvent.VK_SPACE, ' '))
+        assertTrue(DesktopGlobalKeys.isPartOfSpace(KeyEvent.KEY_RELEASED, KeyEvent.VK_SPACE, ' '))
+        assertFalse(DesktopGlobalKeys.isPartOfSpace(KeyEvent.KEY_PRESSED, KeyEvent.VK_A, 'a'))
+    }
+}
+
+/** A press away from a text box lets go of the focus; a press on it keeps what it took. */
+class TextEntryFocusReleaseTest {
+
+    private var cleared = 0
+
+    private val focusManager: FocusManager = Proxy.newProxyInstance(
+        FocusManager::class.java.classLoader,
+        arrayOf(FocusManager::class.java),
+    ) { _, method, _ ->
+        if (method.name == "clearFocus") cleared++
+        if (method.returnType == java.lang.Boolean.TYPE) false else null
+    } as FocusManager
+
+    @Test
+    fun `a press that is not on a text box clears the focus`() {
+        TextEntryFocus.forgetPress()
+        TextEntryFocus.releaseUnlessOnField(focusManager)
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun `a press on a text box leaves the focus where it went`() {
+        TextEntryFocus.forgetPress()
+        TextEntryFocus.pressedOnField()
+        TextEntryFocus.releaseUnlessOnField(focusManager)
+        assertEquals(0, cleared)
+    }
+
+    @Test
+    fun `a press on a text box only protects that press`() {
+        TextEntryFocus.pressedOnField()
+        TextEntryFocus.releaseUnlessOnField(focusManager)
+        TextEntryFocus.releaseUnlessOnField(focusManager)
+        assertEquals(1, cleared)
+    }
+
+    @Test
+    fun `a mark left by a press the window never saw is forgotten when the next one begins`() {
+        // A text box in a dialog: its press never reached the window's own listener.
+        TextEntryFocus.pressedOnField()
+        TextEntryFocus.forgetPress()
+        TextEntryFocus.releaseUnlessOnField(focusManager)
+        assertEquals(1, cleared)
     }
 }

@@ -44,6 +44,25 @@ internal object DesktopGlobalKeys {
         return null
     }
 
+    /**
+     * Whether an AWT key event belongs to a Space keystroke. The KEY_TYPED event of a keystroke has
+     * no key code at all (VK_UNDEFINED), only the character, so it is told apart by that.
+     */
+    internal fun isPartOfSpace(id: Int, keyCode: Int, keyChar: Char): Boolean = when (id) {
+        KeyEvent.KEY_TYPED -> keyChar == ' '
+        else -> keyCode == KeyEvent.VK_SPACE
+    }
+
+    /**
+     * Whether a KEY_TYPED event is the character a Ctrl+plus, minus or zero keystroke would
+     * otherwise type into a focused text box. A typed event has no key code, so [actionFor] cannot
+     * see it; without this the zoom worked but the box got an "=" or "-" as well.
+     */
+    internal fun isZoomTyped(keyChar: Char, ctrl: Boolean, alt: Boolean, meta: Boolean): Boolean =
+        ctrl && !alt && !meta && keyChar in ZOOM_CHARS
+
+    private const val ZOOM_CHARS = "=+-0"
+
     private var spaceHeld = false
 
     private val dispatcher = KeyEventDispatcher { event ->
@@ -54,11 +73,17 @@ internal object DesktopGlobalKeys {
             meta = event.isMetaDown,
             textEntryActive = TextEntryFocus.active,
         )
+        // The typed echo of a zoom key (it carries the character but no key code) is taken too.
+        if (action == null && event.id == KeyEvent.KEY_TYPED &&
+            isZoomTyped(event.keyChar, event.isControlDown, event.isAltDown, event.isMetaDown)
+        ) {
+            return@KeyEventDispatcher true
+        }
         when (action) {
             null -> {
                 // The release of a Space that was taken must be taken too, or the control that
                 // would have had it sees half a keystroke.
-                if (event.keyCode == KeyEvent.VK_SPACE && spaceHeld) {
+                if (spaceHeld && isPartOfSpace(event.id, event.keyCode, event.keyChar)) {
                     if (event.id == KeyEvent.KEY_RELEASED) spaceHeld = false
                     true
                 } else {

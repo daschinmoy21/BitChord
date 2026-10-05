@@ -2,6 +2,7 @@ package com.music.bitchord.desktop
 
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.bitchord.ui.components.TextEntryFocus
+import com.music.bitchord.ui.components.releasesTextEntryFocusOnOutsidePress
 import com.music.bitchord.ui.components.reportsTextEntryFocus
 import com.music.bitchord.ui.components.LocalShelfRowChrome
 import com.music.bitchord.ui.components.ShelfRowChrome
@@ -2929,11 +2930,12 @@ fun BitChordDesktopApp() {
                         }
                         else -> false
                     }
-                }.pointerInput(Unit) {
-                    // A click on nothing in particular lets go of a text box that still holds the focus, so
-                    // Space and the other whole-window keys are not left typing into it.
-                    detectTapGestures { focusManager.clearFocus() }
-                },
+                }
+                    // Any press that is not on a text box lets go of the one that still holds the focus,
+                    // so Space and the other whole-window keys are not left typing into it. A tap
+                    // gesture would not do: a sidebar item or button consumes its own click, and the
+                    // box kept the focus.
+                    .releasesTextEntryFocusOnOutsidePress(focusManager),
                 topBar = { compact ->
                     DesktopTopBar(
                         compact = compact,
