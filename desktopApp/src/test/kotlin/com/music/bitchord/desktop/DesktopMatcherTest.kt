@@ -93,3 +93,64 @@ class DesktopMatcherTest {
         assertEquals("arijit singh", DesktopTrackMatcher.primaryArtist("Arijit Singh feat. Someone"))
     }
 }
+
+/** A native-script title written twice by YouTube, against a library that tags only one half. */
+class DesktopBilingualTitleTest {
+
+    // From a real YouTube Music row and a real Navidrome library: Japanese, a romaji copy after the
+    // dash, the same English subtitle in full-width and ordinary brackets.
+    private val youtube = Song(
+        videoId = "bY5AqVorG_8",
+        title = "彼女が冷たく笑ったら（prologue to the nine stages of change at the deceased remains） - " +
+            "kanojo ga tsumetaku warattara (prologue to the nine stages of change at the deceased remains)",
+        artist = "My Dead Girlfriend",
+        thumbnailUrl = null,
+        durationText = "4:34",
+        albumName = "Hades (The Nine Stages Of Change At The Deceased Remains)",
+    )
+
+    private val library = Song(
+        videoId = "navidrome:src/1",
+        title = "彼女が冷たく笑ったら (Prologue To The Nine Stages Of Change At The Deceased Remains)",
+        artist = "My Dead Girlfriend",
+        thumbnailUrl = null,
+        durationText = "4:34",
+    )
+
+    @Test
+    fun theNativeHalfOfATwiceWrittenTitleIsTheSameTrack() {
+        assertEquals(library, DesktopTrackMatcher.best(listOf(library), youtube))
+    }
+
+    @Test
+    fun aDifferentTrackOnTheSameAlbumIsNot() {
+        val other = library.copy(videoId = "navidrome:src/2", title = "手を振って", durationText = "3:48")
+        assertNull(DesktopTrackMatcher.best(listOf(other), youtube))
+    }
+
+    @Test
+    fun aSongAndItsFilmAreNotTwoSpellingsOfOneTitle() {
+        // Latin on both sides of the dash: a song and the film it is from, not a transliteration pair.
+        val row = Song("yt", "Paniyon Sa - Satyamev Jayate", "Atif Aslam", null, durationText = "4:10")
+        val film = Song("jio", "Satyamev Jayate", "Atif Aslam", null, durationText = "4:10")
+        assertNull(DesktopTrackMatcher.best(listOf(film), row))
+    }
+
+    @Test
+    fun anExactTitleStillWinsWhenBothHalvesAreOffered() {
+        val plainRomaji = library.copy(videoId = "navidrome:src/3", title = "kanojo ga tsumetaku warattara")
+        assertNotNull(DesktopTrackMatcher.best(listOf(library, plainRomaji), youtube))
+    }
+
+    @Test
+    fun theLibraryIsAskedForTheAlbumAndTheArtistWhenTheTitleFindsNothing() {
+        assertEquals(
+            listOf("hades my dead girlfriend", "my dead girlfriend"),
+            DesktopNavidromeSource.fallbackQueries(youtube),
+        )
+        // No album known: the artist alone.
+        assertEquals(listOf("my dead girlfriend"), DesktopNavidromeSource.fallbackQueries(youtube.copy(albumName = null)))
+        // Nothing to go on.
+        assertEquals(emptyList(), DesktopNavidromeSource.fallbackQueries(youtube.copy(albumName = null, artist = "")))
+    }
+}

@@ -47,9 +47,20 @@ class DesktopParityTest {
 
     @Test
     fun sourceMatcherRejectsAConflictingArtist() {
+        // A different credit on a different runtime is a different recording. (On the very same
+        // runtime the shared matcher, like Android's, lets the length stand in for the credit: film
+        // catalogues file one master under its composer on one service and its singer on another.)
         val target = Song("youtube-id", "Tera Mera Rishta", "Mithoon", null, durationText = "6:05")
-        val cover = Song("jiosaavn:cover", "Tera Mera Rishta", "Different Artist", null, durationText = "6:05")
+        val cover = Song("jiosaavn:cover", "Tera Mera Rishta", "Different Artist", null, durationText = "5:12")
 
         assertEquals(null, DesktopTrackMatcher.best(listOf(cover), target))
+    }
+
+    @Test
+    fun anExactRuntimeStandsInForADifferentlyCreditedCopyOfTheSameMaster() {
+        val target = Song("youtube-id", "Tera Mera Rishta", "Mithoon", null, durationText = "6:05")
+        val sameMaster = Song("jiosaavn:master", "Tera Mera Rishta", "Different Artist", null, durationText = "6:05")
+
+        assertEquals(sameMaster, DesktopTrackMatcher.best(listOf(sameMaster), target))
     }
 }

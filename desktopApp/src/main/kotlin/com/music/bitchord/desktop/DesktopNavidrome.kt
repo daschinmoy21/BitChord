@@ -303,15 +303,50 @@ internal object DesktopNavidromeSource {
         }
     }
 
+    /** Answers kept for a minute, so the tracks of one album do not each ask the same question. */
+    private val recentSearches = ConcurrentHashMap<String, Pair<Long, List<Song>>>()
+
+    private suspend fun cachedSearch(config: DesktopSourceConfig, query: String, limit: Int): List<Song> {
+        val key = "${config.id}$SEPARATOR$limit$SEPARATOR$query"
+        val now = System.currentTimeMillis()
+        recentSearches[key]?.takeIf { now - it.first < SEARCH_TTL_MS }?.let { return it.second }
+        val found = search(config, query, limit).getOrNull() ?: return emptyList()
+        if (recentSearches.size > MAX_CACHED_SEARCHES) recentSearches.clear()
+        recentSearches[key] = now to found
+        return found
+    }
+
     /** Every copy the server holds of [song], most confident first. */
     suspend fun matches(config: DesktopSourceConfig, song: Song): List<Song> {
         if (song.title.isBlank() || song.isVideo) return emptyList()
         for (query in DesktopTrackMatcher.queries(song)) {
-            val candidates = search(config, query).getOrDefault(emptyList())
+            val candidates = cachedSearch(config, query, TITLE_RESULTS)
+            DesktopTrackMatcher.ranked(candidates, song).ifEmpty { null }?.let { return it }
+        }
+        // The library may file the track under words the title search never asks for: the native
+        // title with the romaji dropped, a subtitle added, a film name left off. Ask for where it
+        // would be instead, the album and the artist, and let the matcher pick the row.
+        for (query in fallbackQueries(song)) {
+            val candidates = cachedSearch(config, query, FALLBACK_RESULTS)
             DesktopTrackMatcher.ranked(candidates, song).ifEmpty { null }?.let { return it }
         }
         return emptyList()
     }
+
+    /** The album and the artist of [song] as searches, most specific first. */
+    internal fun fallbackQueries(song: Song): List<String> {
+        val artist = DesktopTrackMatcher.primaryArtist(song.artist).takeIf { it.isNotBlank() }
+        val album = song.albumName?.let { DesktopTrackMatcher.searchableTitle(it) }?.takeIf { it.isNotBlank() }
+        return buildList {
+            if (album != null) add(if (artist != null) "$album $artist" else album)
+            if (artist != null) add(artist)
+        }.distinct()
+    }
+
+    private const val SEARCH_TTL_MS = 60_000L
+    private const val MAX_CACHED_SEARCHES = 200
+    private const val TITLE_RESULTS = 25
+    private const val FALLBACK_RESULTS = 60
 
     suspend fun stream(
         config: DesktopSourceConfig,
