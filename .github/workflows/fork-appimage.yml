@@ -1,0 +1,71 @@
+name: Fork AppImage
+# Builds the Linux AppImage of this fork on every push and keeps it as a rolling prerelease, one per
+# branch, under a fixed file name so the download link never changes:
+#   https://github.com/<you>/BitChord/releases/download/build-<branch>/BitChord-linux-x86_64.AppImage
+on:
+  push:
+    branches: ["**"]
+    paths-ignore: ["**.md", "docs/**", "backend/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-appimage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot binutils file
+          curl -sSL -o appimagetool.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.AppImage
+
+      - run: chmod +x gradlew
+
+      - name: Build the app image
+        run: ./gradlew :desktopApp:createDistributable -Pbitchord.version=1.8-fork.${{ github.run_number }}
+
+      - name: The analyser and models are in the jar
+        run: |
+          jar=$(ls desktopApp/build/compose/binaries/main/app/BitChord/lib/app/desktopApp*.jar)
+          jar tf "$jar" | grep -q 'native/libbitchord_analysis.so'
+          jar tf "$jar" | grep -q 'models/.*\.onnx'
+
+      - name: Build the AppImage
+        run: |
+          mkdir -p dist
+          desktopApp/packaging/appimage.sh \
+            desktopApp/build/compose/binaries/main/app/BitChord \
+            dist/BitChord-linux-x86_64.AppImage \
+            "$PWD/appimagetool.AppImage"
+          ls -lh dist
+
+      - name: Publish the rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-${GITHUB_REF_NAME//\//-}"
+          short=$(git rev-parse --short HEAD)
+          gh release delete "$tag" --cleanup-tag --yes || true
+          gh release create "$tag" dist/BitChord-linux-x86_64.AppImage \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Fork build: $GITHUB_REF_NAME ($short)" \
+            --notes "Built from $GITHUB_REF_NAME at $short (run #${{ github.run_number }})."
