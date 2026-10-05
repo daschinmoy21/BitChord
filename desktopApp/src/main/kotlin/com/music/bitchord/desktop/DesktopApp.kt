@@ -139,6 +139,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -1804,7 +1805,7 @@ fun BitChordDesktopApp() {
             rate = playbackSpeed.toDouble(),
         )
     }
-    LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs) {
+    LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs, playback.streamSourceId) {
         DesktopScrobbling.onPlaybackStateChanged(playback)
         DesktopWindowsMedia.publish(playback)
     }
@@ -3569,10 +3570,12 @@ fun BitChordDesktopApp() {
                                     onTestSource = { candidate ->
                                         sourceStatus = sourceStatus + (candidate.id to "Checking source…")
                                         scope.launch {
-                                            val health = if (candidate.kind == DesktopSourceKind.ADDON) {
-                                                DesktopAddonSource.health(candidate)
-                                            } else {
-                                                DesktopModuleSource.health(candidate)
+                                            val health = when (candidate.kind) {
+                                                DesktopSourceKind.ADDON -> DesktopAddonSource.health(candidate)
+                                                DesktopSourceKind.NAVIDROME ->
+                                                    DesktopNavidromeSource.health(candidate)
+                                                        .map { "${it.name} ${it.version}" }
+                                                else -> DesktopModuleSource.health(candidate)
                                             }
                                             health.fold(
                                                 onSuccess = { sourceStatus = sourceStatus + (candidate.id to it) },
@@ -5965,6 +5968,23 @@ private fun DesktopSettingsScreen(
                             kind = DesktopSourceKind.ADDON,
                         )
                     }
+                    if (sourceConfigs.none { it.kind == DesktopSourceKind.NAVIDROME }) {
+                        SettingsRow(
+                            Icons.Rounded.LibraryMusic,
+                            "Add Navidrome",
+                            DesktopSourceKind.NAVIDROME.detail,
+                        ) {
+                            editingSource = DesktopSourceConfig(
+                                id = UUID.randomUUID().toString(),
+                                kind = DesktopSourceKind.NAVIDROME,
+                            )
+                        }
+                    }
+                }
+                if (sourceConfigs.any { it.kind == DesktopSourceKind.NAVIDROME }) {
+                    SettingsGroup("Navidrome playback") {
+                        DesktopNavidromePlaybackControls()
+                    }
                 }
             }
             if (section == DesktopSettingsSection.ACCOUNT) item {
@@ -6000,6 +6020,23 @@ private fun DesktopSettingsScreen(
     }
 
     editingSource?.let { config ->
+        if (config.kind == DesktopSourceKind.NAVIDROME) {
+            DesktopNavidromeEditorDialog(
+                config = config,
+                isNew = sourceConfigs.none { it.id == config.id },
+                onDismiss = { editingSource = null },
+                onSave = {
+                    onSaveSource(it)
+                    editingSource = null
+                },
+                onRemove = {
+                    DesktopNavidromeCredentialStore.remove(config.id)
+                    onRemoveSource(config)
+                    editingSource = null
+                },
+            )
+            return@let
+        }
         DesktopSourceEditorDialog(
             config = config,
             configuredSources = sourceConfigs,
@@ -6144,6 +6181,7 @@ private fun DesktopSourceSettingsRow(
         )
         Icon(
             when (config.kind) {
+                DesktopSourceKind.NAVIDROME -> Icons.Rounded.LibraryMusic
                 DesktopSourceKind.ADDON -> Icons.Rounded.Extension
                 DesktopSourceKind.CUSTOM_MODULE, DesktopSourceKind.MODULE -> Icons.Rounded.Extension
                 DesktopSourceKind.JIOSAAVN -> Icons.Rounded.GraphicEq

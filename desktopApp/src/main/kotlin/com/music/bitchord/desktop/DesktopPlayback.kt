@@ -48,6 +48,8 @@ data class DesktopPlaybackState(
     val streamFormat: DesktopStreamFormat? = null,
     /** Which configured source is serving this — null before anything opened. */
     val streamSourceId: String? = null,
+    /** That source's own id for what is playing, for the ones that are told about plays. */
+    val streamTrackId: String? = null,
     /** Whether a source is still looking for a better copy of this track while it plays. */
     val searchingBetter: Boolean = false,
     /** True while an analysed Automix handoff is audibly mixing, which the scrubber animates. */
@@ -65,6 +67,8 @@ internal data class DesktopStream(
     val headers: Map<String, String> = emptyMap(),
     /** The configured source that produced this stream, for media-failure fallback. */
     val sourceId: String? = null,
+    /** The source's own id for this track, where it has one worth reporting plays against. */
+    val trackId: String? = null,
     /** Whether the source says this is the immersive mix rather than a stereo one. */
     val isDolbyAtmos: Boolean = false,
     /** Explicit add-on transport (`hls` or `dash`) for extensionless manifest URLs. */

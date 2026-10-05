@@ -338,7 +338,7 @@ class DesktopPlaybackEngine(
         if (better == null) return false
         val current = _state.value
         if (current.song?.videoId != song.videoId) return true
-        if (!DesktopMusicSources.worthSwapping(better.format, current.streamFormat)) {
+        if (!DesktopMusicSources.worthSwapping(better, current.streamSourceId, current.streamFormat)) {
             DesktopTrackLog.log(
                 "keeping '${song.title}' on what is playing — " +
                     "${DesktopMusicSources.sourceNameFor(better)} offered nothing better",
@@ -558,7 +558,7 @@ class DesktopPlaybackEngine(
         incomingSearchingFor = song.videoId
         scope.launch {
             val better = runCatching { pending.await() }.getOrNull()
-                ?.takeIf { DesktopMusicSources.worthSwapping(it.format, opened.format) }
+                ?.takeIf { DesktopMusicSources.worthSwapping(it, opened.sourceId, opened.format) }
             if (better == null) {
                 settleIncomingSearch(song)
                 return@launch
@@ -1381,6 +1381,7 @@ class DesktopPlaybackEngine(
             // until something has been measured.
             streamFormat = track.decoder.measuredFormat ?: track.stream.format,
             streamSourceId = track.stream.sourceId,
+            streamTrackId = track.stream.trackId,
             searchingBetter = track.song.videoId.let { it == searchingBetterFor || it == incomingSearchingFor },
             smartAnalysis = analysisStatus(track),
         )

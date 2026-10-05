@@ -39,8 +39,11 @@ class DesktopSourceParityTest {
 
     @Test
     fun `source kinds follow android priority`() {
+        // Navidrome is this fork's own addition, ahead of everything Android has: the listener's
+        // own library wins when it holds the track.
         assertEquals(
             listOf(
+                DesktopSourceKind.NAVIDROME,
                 DesktopSourceKind.ADDON,
                 DesktopSourceKind.CUSTOM_MODULE,
                 DesktopSourceKind.MODULE,
@@ -51,7 +54,7 @@ class DesktopSourceParityTest {
         )
         // The walk is ranked rather than declared.
         assertEquals(
-            listOf(0, 0, 1, 2, 3),
+            listOf(-1, 0, 0, 1, 2, 3),
             DesktopSourceKind.entries.map { it.rank },
         )
     }

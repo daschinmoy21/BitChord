@@ -103,9 +103,38 @@ object DesktopScrobbling {
         name
     }
 
+    /** A play that Navidrome is counting, and so Last.fm and ListenBrainz are not. */
+    private data class NavidromePlay(val config: DesktopSourceConfig, val trackId: String)
+
+    @Volatile private var viaNavidrome: NavidromePlay? = null
+
+    /** A track whose "now playing" waits until it is known which source is serving it. */
+    @Volatile private var pendingNowPlaying: Song? = null
+
+    private fun navidromePlayFor(state: DesktopPlaybackState): NavidromePlay? {
+        if (!DesktopNavidromeSettings.reportPlays.value) return null
+        val trackId = state.streamTrackId ?: return null
+        val config = DesktopSourceRegistry.navidromeConfig(state.streamSourceId) ?: return null
+        return NavidromePlay(config, trackId)
+    }
+
+    /**
+     * Asked for when a track is loaded, but sent once it is playing: until a source has opened it,
+     * there is no telling whether this is Navidrome's play to report or Last.fm's.
+     */
     suspend fun updateNowPlaying(song: Song): Result<Unit> = runCatching {
-        if (lastFmConfigured) updateLastFm(song)
-        if (listenBrainzConfigured) submitListenBrainz(song, "playing_now", 0L, song.durationMillis(), 0L)
+        pendingNowPlaying = song
+    }
+
+    private suspend fun sendNowPlaying(song: Song, navidrome: NavidromePlay?) {
+        if (navidrome != null) {
+            DesktopNavidromeSource.report(navidrome.config, navidrome.trackId, submission = false)
+            return
+        }
+        runCatching {
+            if (lastFmConfigured) updateLastFm(song)
+            if (listenBrainzConfigured) submitListenBrainz(song, "playing_now", 0L, song.durationMillis(), 0L)
+        }
     }
 
     suspend fun scrobble(song: Song): Result<Unit> = runCatching {
@@ -125,10 +154,18 @@ object DesktopScrobbling {
             timerStartedAtMs = 0L
             remainingMs = 0L
             lastFmScrobbled = false
+            viaNavidrome = null
         }
+        // Looked at on every change, because a copy from Navidrome can swap in mid-track.
+        val navidrome = navidromePlayFor(state)
+        viaNavidrome = navidrome
         if (!state.isPlaying) {
             pauseTimerLocked()
             return
+        }
+        pendingNowPlaying?.takeIf { it.videoId == song.videoId }?.let { pending ->
+            pendingNowPlaying = null
+            scope.launch { sendNowPlaying(pending, navidrome) }
         }
         if (remainingMs == 0L && !lastFmScrobbled) {
             val durationMs = state.durationMs.takeIf { it > 0 } ?: song.durationMillis()
@@ -153,8 +190,15 @@ object DesktopScrobbling {
                         true
                     }
                 }
-                if (shouldSend && lastFmConfigured) {
-                    submitLastFm(song, activeStartedAtMs / 1_000L)
+                if (shouldSend) {
+                    val navidrome = viaNavidrome
+                    if (navidrome != null) {
+                        DesktopNavidromeSource.report(
+                            navidrome.config, navidrome.trackId, submission = true, atMs = activeStartedAtMs,
+                        )
+                    } else if (lastFmConfigured) {
+                        submitLastFm(song, activeStartedAtMs / 1_000L)
+                    }
                 }
             }
         }
@@ -167,9 +211,20 @@ object DesktopScrobbling {
             timerStartedAtMs = 0L
             activeStartedAtMs.takeIf { activeSongId == song.videoId } ?: System.currentTimeMillis()
         }
+        // Taken now: by the time the coroutine runs the next track may already have replaced it.
+        val navidromeEnd = viaNavidrome
         scope.launch {
             try {
                 val minDurationMs = DesktopScrobbleSettings.minDuration.value * 1_000L
+                // Navidrome's play is Navidrome's alone: nothing goes to the other services.
+                navidromeEnd?.let { navidrome ->
+                    if (!lastFmScrobbled && song.durationMillis() > minDurationMs) {
+                        DesktopNavidromeSource.report(
+                            navidrome.config, navidrome.trackId, submission = true, atMs = startedAt,
+                        )
+                    }
+                    return@launch
+                }
                 if (!lastFmScrobbled && lastFmConfigured && song.durationMillis() > minDurationMs) {
                     submitLastFm(song, startedAt / 1_000L)
                 }

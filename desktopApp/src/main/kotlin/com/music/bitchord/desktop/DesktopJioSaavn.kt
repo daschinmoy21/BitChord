@@ -218,6 +218,9 @@ internal object DesktopMusicSources {
     fun worthSwapping(candidate: DesktopStreamFormat, playing: DesktopStreamFormat?): Boolean =
         DesktopSourceRegistry.worthSwapping(candidate, playing)
 
+    fun worthSwapping(candidate: DesktopStream, playingSourceId: String?, playing: DesktopStreamFormat?): Boolean =
+        DesktopSourceRegistry.worthSwapping(candidate, playingSourceId, playing)
+
     fun sourceNameFor(stream: DesktopStream): String = DesktopSourceRegistry.sourceNameFor(stream)
 
     fun hasYouTubeOriginal(song: Song): Boolean = DesktopSourceRegistry.hasYouTubeOriginal(song)

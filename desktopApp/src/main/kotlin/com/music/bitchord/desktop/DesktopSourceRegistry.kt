@@ -95,6 +95,21 @@ internal object DesktopSourceRegistry {
         override suspend fun matches(song: Song): List<Song> = DesktopJioSaavn.matches(song)
     }
 
+    private class NavidromeAdapter(
+        override val config: DesktopSourceConfig,
+    ) : SourceAdapter {
+        override val descriptor: DesktopSourceDescriptor
+            get() = config.descriptor()
+
+        override fun owns(song: Song): Boolean =
+            DesktopNavidromeSource.parseTrack(song.videoId)?.sourceId == config.id
+
+        override suspend fun resolve(song: Song, quality: String?): Result<DesktopStream?> =
+            DesktopNavidromeSource.stream(config, song, DesktopNavidromeSettings.plan().transcode)
+
+        override suspend fun matches(song: Song): List<Song> = DesktopNavidromeSource.matches(config, song)
+    }
+
     private class YouTubeAdapter(
         override val config: DesktopSourceConfig,
     ) : SourceAdapter {
@@ -176,6 +191,7 @@ internal object DesktopSourceRegistry {
             .filterNot { forDownload && it.kind == DesktopSourceKind.ADDON && !DesktopAddonSource.allowsDownloads(it) }
             .map { config ->
                 when (config.kind) {
+                    DesktopSourceKind.NAVIDROME -> NavidromeAdapter(config)
                     DesktopSourceKind.ADDON -> AddonAdapter(config)
                     DesktopSourceKind.CUSTOM_MODULE,
                     DesktopSourceKind.MODULE,
@@ -205,7 +221,9 @@ internal object DesktopSourceRegistry {
         val available = playbackAdapters(quality, forDownload)
         val moduleReference = DesktopModuleSource.parseTrack(song.videoId)
         val addonReference = DesktopAddonSource.parseTrack(song.videoId)
+        val navidromeReference = DesktopNavidromeSource.parseTrack(song.videoId)
         val owned = when {
+            navidromeReference != null -> available.firstOrNull { it.config.id == navidromeReference.sourceId }
             addonReference != null -> available.firstOrNull { it.config.id == addonReference.sourceId }
             moduleReference?.sourceId != null -> available.firstOrNull { it.config.id == moduleReference.sourceId }
             moduleReference != null -> available.firstOrNull {
@@ -220,7 +238,10 @@ internal object DesktopSourceRegistry {
         // than refused the way a disabled source's row is.
         val heldBack = addonReference != null && owned == null &&
             configs().any { it.id == addonReference.sourceId && it.enabled && it.isComplete }
-        if (!heldBack && (addonReference != null || moduleReference != null || song.videoId.startsWith("jiosaavn:"))) {
+        if (!heldBack &&
+            (navidromeReference != null || addonReference != null || moduleReference != null ||
+                song.videoId.startsWith("jiosaavn:"))
+        ) {
             if (owned == null) error("The source for this track is disabled or no longer configured")
             // This path has nothing to race.
             DesktopTrackLog.log(
@@ -258,15 +279,22 @@ internal object DesktopSourceRegistry {
 
         // A normal YouTube row is offered to every higher-priority source first so a configured
         // FLAC/module or JioSaavn copy is used when available.
+        val navidrome = DesktopNavidromeSettings.plan()
         for (source in available.filter {
             it.config.kind != DesktopSourceKind.YOUTUBE &&
                 it.config.id != excludedSourceId &&
+                (it.config.kind != DesktopSourceKind.NAVIDROME || navidrome.enabled) &&
                 !DesktopOriginalVersion.isPinned(song.videoId)
         }) {
-            val matched = source.match(song) ?: continue
-            source.resolve(matched, quality).getOrNull()
-                ?.takeIf { playableHere(source, it) }
-                ?.let { return@runCatching it }
+            // Nobody is watching a clock on a download or a read-ahead, but a slow Navidrome still
+            // must not hold up the sources behind it.
+            val stream = if (source.config.kind == DesktopSourceKind.NAVIDROME) {
+                withTimeoutOrNull(navidrome.waitMs) { openBest(source, song, quality) }
+            } else {
+                val matched = source.match(song) ?: continue
+                source.resolve(matched, quality).getOrNull()
+            }
+            stream?.takeIf { playableHere(source, it) }?.let { return@runCatching it }
         }
         val youtube = available.firstOrNull {
             it.config.kind == DesktopSourceKind.YOUTUBE && it.config.id != excludedSourceId
@@ -307,13 +335,15 @@ internal object DesktopSourceRegistry {
         val youtube = available.firstOrNull {
             it.config.kind == DesktopSourceKind.YOUTUBE && it.config.id != excludedSourceId
         }
+        val navidrome = DesktopNavidromeSettings.plan()
         val higher = if (DesktopOriginalVersion.isPinned(song.videoId)) {
             // Sent back to YouTube's own upload by hand.
             DesktopTrackLog.log("'${song.title}' is pinned to YouTube's original by the listener")
             emptyList()
         } else {
             available.filter {
-                it.config.kind != DesktopSourceKind.YOUTUBE && it.config.id != excludedSourceId
+                it.config.kind != DesktopSourceKind.YOUTUBE && it.config.id != excludedSourceId &&
+                    (it.config.kind != DesktopSourceKind.NAVIDROME || navidrome.enabled)
             }
         }
         // Nothing outranks YouTube, so there is no race to run — this is the plain resolve.
@@ -321,10 +351,52 @@ internal object DesktopSourceRegistry {
             return@runCatching DesktopLiveResolution(resolve(song, quality, excludedSourceId).getOrThrow())
         }
 
+        // Navidrome first: the listener's own copy gets the first few seconds to the exclusion of
+        // everything else. A copy it has not found by then does not stop the others starting, and
+        // still takes over from them if it turns up later.
+        val navidromeLegs = higher.filter { it.config.kind == DesktopSourceKind.NAVIDROME }
+        var lateNavidrome: Deferred<DesktopStream?>? = null
+        val racing = if (navidrome.mode == DesktopNavidromeMode.FIRST && navidromeLegs.isNotEmpty() && !song.isVideo) {
+            DesktopTrackLog.log(
+                "'${song.title}' — asking ${navidromeLegs.first().descriptor.name} first, " +
+                    "up to ${navidrome.waitMs / 1_000}s",
+            )
+            val attempt = scope.async { firstSubstitute(navidromeLegs, song, quality) }
+            val own = withTimeoutOrNull(navidrome.waitMs) { attempt.await() }
+            if (own != null) {
+                DesktopTrackLog.log(
+                    "'${song.title}' served by ${sourceNameFor(own)} at " +
+                        own.format.summary.ifBlank { "an unstated format" },
+                )
+                return@runCatching DesktopLiveResolution(own)
+            }
+            if (attempt.isActive) {
+                DesktopTrackLog.log("${navidromeLegs.first().descriptor.name} was too slow; starting elsewhere")
+                lateNavidrome = attempt
+            } else {
+                DesktopTrackLog.log("${navidromeLegs.first().descriptor.name} has no copy of '${song.title}'")
+            }
+            higher - navidromeLegs.toSet()
+        } else {
+            higher
+        }
+        // Whatever is still searching when sound starts is handed over, with Navidrome's search
+        // taking precedence because it is the one the listener asked for.
+        fun DesktopLiveResolution.withLate(): DesktopLiveResolution {
+            val late = lateNavidrome?.takeIf { it.isActive } ?: return this
+            if (pendingSubstitute !== late) pendingSubstitute?.cancel()
+            return DesktopLiveResolution(stream, late)
+        }
+        if (racing.isEmpty()) {
+            val stream = youtube.resolve(song, quality).getOrNull()
+                ?: error("No enabled music source could play this track")
+            return@runCatching DesktopLiveResolution(stream).withLate()
+        }
+
         // Both legs are parented to the registry's own scope rather than the caller's.
         DesktopTrackLog.log(
             "resolving '${song.title}' by '${song.artist}' — racing " +
-                higher.joinToString { it.descriptor.name } + " against YouTube",
+                racing.joinToString { it.descriptor.name } + " against YouTube",
         )
         if (song.isVideo) {
             // A video upload is another recording, and can be another song altogether — the sources
@@ -336,7 +408,7 @@ internal object DesktopSourceRegistry {
             )
         }
         val lookup = scope.async {
-            withTimeoutOrNull(SUBSTITUTE_TIMEOUT_MS) { firstSubstitute(higher, song, quality) }
+            withTimeoutOrNull(SUBSTITUTE_TIMEOUT_MS) { firstSubstitute(racing, song, quality) }
         }
         val fallback = scope.async { youtube.resolve(song, quality).getOrNull() }
 
@@ -353,7 +425,7 @@ internal object DesktopSourceRegistry {
                     " at ${quick.format.summary.ifBlank { "an unstated format" }}",
             )
             // Winning the race is not the same as being the best copy.
-            return@runCatching DesktopLiveResolution(quick, betterThan(quick, higher, song, quality))
+            return@runCatching DesktopLiveResolution(quick, betterThan(quick, racing, song, quality)).withLate()
         }
 
         val youtubeStream = fallback.await()
@@ -364,7 +436,7 @@ internal object DesktopSourceRegistry {
         if (pending != null) {
             DesktopTrackLog.log("'${song.title}' started on YouTube while the other sources keep looking")
         }
-        DesktopLiveResolution(youtubeStream, pending)
+        DesktopLiveResolution(youtubeStream, pending).withLate()
     }
 
     /**
@@ -415,6 +487,27 @@ internal object DesktopSourceRegistry {
         }
     }
 
+    /**
+     * Whether [candidate] is worth interrupting what is playing for. The listener's own Navidrome
+     * wins over any other source whatever the format, since choosing it is the point; between
+     * everything else it is the quality that decides.
+     */
+    internal fun worthSwapping(
+        candidate: DesktopStream,
+        playingSourceId: String?,
+        playing: DesktopStreamFormat?,
+    ): Boolean {
+        if (isNavidrome(candidate.sourceId) && !isNavidrome(playingSourceId)) return true
+        return worthSwapping(candidate.format, playing)
+    }
+
+    /** The Navidrome entry that [sourceId] names, or null when it names anything else. */
+    internal fun navidromeConfig(sourceId: String?): DesktopSourceConfig? =
+        sourceId?.let { id -> configs().firstOrNull { it.id == id && it.kind == DesktopSourceKind.NAVIDROME } }
+
+    private fun isNavidrome(sourceId: String?): Boolean =
+        sourceId != null && configs().firstOrNull { it.id == sourceId }?.kind == DesktopSourceKind.NAVIDROME
+
     /** Whether a copy found after the fact is worth interrupting playback for. */
     internal fun worthSwapping(candidate: DesktopStreamFormat, playing: DesktopStreamFormat?): Boolean {
         if (candidate.isLossless) return true
@@ -440,7 +533,8 @@ internal object DesktopSourceRegistry {
         val playingRank = configs().firstOrNull { it.id == playing?.sourceId }?.kind?.rank
             ?: DesktopSourceKind.YOUTUBE.rank
         val better = playbackAdapters(quality).filter {
-            it.config.kind != DesktopSourceKind.YOUTUBE && it.config.kind.rank < playingRank
+            it.config.kind != DesktopSourceKind.YOUTUBE && it.config.kind.rank < playingRank &&
+                (it.config.kind != DesktopSourceKind.NAVIDROME || DesktopNavidromeSettings.plan().enabled)
         }
         if (better.isEmpty()) return null
         DesktopTrackLog.log(
@@ -534,7 +628,8 @@ internal object DesktopSourceRegistry {
 
     /** Whether this row has a YouTube upload behind it to go back to. */
     fun hasYouTubeOriginal(song: Song): Boolean =
-        DesktopAddonSource.parseTrack(song.videoId) == null &&
+        DesktopNavidromeSource.parseTrack(song.videoId) == null &&
+            DesktopAddonSource.parseTrack(song.videoId) == null &&
             DesktopModuleSource.parseTrack(song.videoId) == null &&
             !song.videoId.startsWith("jiosaavn:") &&
             song.videoId.isNotBlank()

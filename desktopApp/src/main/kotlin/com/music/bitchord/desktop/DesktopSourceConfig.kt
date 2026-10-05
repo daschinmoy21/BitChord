@@ -13,6 +13,19 @@ internal enum class DesktopSourceKind(
     val supportsLossless: Boolean,
     val rank: Int,
 ) {
+    /**
+     * The listener's own Navidrome (or any Subsonic server). Ranked above everything else: when it
+     * holds a track, it is the copy they chose to keep.
+     */
+    NAVIDROME(
+        label = "Navidrome",
+        detail = "Your own music server · your original files",
+        labels = listOf("Your library", "Original files"),
+        needsServer = true,
+        supportsLossless = true,
+        rank = -1,
+    ),
+
     /** An addon server the user pointed at themselves. */
     ADDON(
         label = "Addon",
@@ -75,7 +88,7 @@ internal enum class DesktopAudioQuality(
     ;
 
     /** Whether a stream started under this ceiling may be served by [kind]. */
-    fun permits(kind: DesktopSourceKind): Boolean = when (this) {
+    fun permits(kind: DesktopSourceKind): Boolean = kind == DesktopSourceKind.NAVIDROME || when (this) {
         LOSSLESS -> true
         // No lossless answer is wanted here, and a source that can serve one is the slow half of
         // the list.
@@ -102,6 +115,8 @@ internal data class DesktopSourceConfig(
     val kind: DesktopSourceKind,
     val label: String = "",
     val baseUrl: String = "",
+    /** The Subsonic login name; the token that goes with it is kept in the keyring. */
+    val username: String = "",
     val enabled: Boolean = true,
     /** The addon manifest's `allowDownloads`, as last read. */
     val allowDownloads: Boolean = true,
@@ -115,11 +130,13 @@ internal data class DesktopSourceConfig(
         }
 
     val isComplete: Boolean
-        get() = !kind.needsServer || baseUrl.isNotBlank()
+        get() = (!kind.needsServer || baseUrl.isNotBlank()) &&
+            (kind != DesktopSourceKind.NAVIDROME || username.isNotBlank())
 
     /** Whether this entry exists because the user added it, and so can be removed. */
     val isUserAdded: Boolean
-        get() = kind == DesktopSourceKind.ADDON || kind == DesktopSourceKind.CUSTOM_MODULE
+        get() = kind == DesktopSourceKind.ADDON || kind == DesktopSourceKind.CUSTOM_MODULE ||
+            kind == DesktopSourceKind.NAVIDROME
 }
 
 /**
