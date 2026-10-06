@@ -2,6 +2,7 @@ package com.music.bitchord.ui.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -11,6 +12,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.round
+import kotlinx.coroutines.delay
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.ImageFilter
@@ -22,6 +24,22 @@ import org.jetbrains.skia.Rect as SkRect
 private val startNanos = System.nanoTime()
 
 internal actual fun uptimeMillis(): Long = (System.nanoTime() - startNanos) / 1_000_000L
+
+@Composable
+internal actual fun rememberLyricClockActive(): Boolean {
+    // collectAsStateWithLifecycle stops under ON_PAUSE. Compose Desktop sends
+    // ON_PAUSE when the window loses focus, and this flag still has to update
+    // then. It goes false only when the window is hidden to the tray.
+    return PlayerPlatform.host.windowOnScreen.collectAsState().value
+}
+
+internal actual suspend fun awaitLyricFrameNanos(): Long {
+    delay(LYRIC_FRAME_DELAY_MS)
+    return System.nanoTime()
+}
+
+/** About one frame at 60 Hz. An unfocused AWT window may never deliver a compose frame. */
+private const val LYRIC_FRAME_DELAY_MS = 16L
 
 // Skia blurs at every size; there is no platform floor to check.
 internal actual val renderEffectBlurSupported: Boolean = true

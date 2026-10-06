@@ -53,6 +53,10 @@ internal object DesktopPlayerHost : PlayerHost {
 
     override val settings: DesktopPlayerSettings = DesktopPlayerSettings
 
+    /** Open on screen, including while another window has the keyboard. */
+    override val windowOnScreen: StateFlow<Boolean>
+        get() = DesktopWindowVisibility.visible
+
     override fun cachedCanvas(song: Song): CanvasArtwork? = DesktopCanvasClient.cached(song)?.toShared()
 
     override suspend fun canvasFor(song: Song): CanvasArtwork? =

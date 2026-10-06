@@ -72,7 +72,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -621,38 +620,36 @@ private fun rememberLyricClock(
         }
     }
 
-    // Gated on the app being on screen. The loop asks for a frame, writes a
-    // value that invalidates a drawing, and is handed the next frame for it —
-    // which is a request to render continuously for as long as it runs. That is
-    // the right trade for a lyric being read and the wrong one for a phone in a
-    // pocket, and the composition alone cannot tell the two apart.
+    // [rememberLyricClockActive] is the activity on the phone and the open
+    // window on the desktop. The loop writes a value the draw phase reads, so
+    // it keeps asking to be drawn for as long as it runs. That is what a lyric
+    // on screen wants, and what a phone in a pocket must not do.
     //
     // Every start is a fresh run from the latest reading, so neither a pause
-    // nor a spell in the background is mistaken for one very long frame.
+    // nor a spell off screen is mistaken for one very long frame.
     //
     // One loop for the whole run, reading the playhead itself. Keyed on the
     // reading instead, every reading restarted it, and each restart spent a
-    // frame waiting for its first frame time — a hitch twice a second.
-    val foreground = rememberIsForeground()
-    LaunchedEffect(engine, playhead, isPlaying, foreground) {
-        if (!isPlaying || !foreground) return@LaunchedEffect
+    // frame waiting for its first frame time. That hitch showed up twice a second.
+    val active = rememberLyricClockActive()
+    LaunchedEffect(engine, playhead, isPlaying, active) {
+        if (!isPlaying || !active) return@LaunchedEffect
         engine.restart()
         while (true) {
-            withFrameNanos { frameNanos ->
-                // Readings are stamped on the System.nanoTime clock. The frame
-                // time is that clock too wherever it is a vsync stamp, and is
-                // preferred for being evenly spaced; anywhere it is not, the
-                // two are seconds apart and the real clock is used instead.
-                val system = System.nanoTime()
-                val now = if (abs(system - frameNanos) < SAME_CLOCK_NANOS) frameNanos else system
-                val sampledAt = playhead.sampledAtNanos
-                clock.longValue = engine.frame(
-                    nowMs = nanosToMs(now),
-                    reportedMs = playhead.positionMs,
-                    sampledAtMs = if (sampledAt > 0L) nanosToMs(sampledAt) else Double.NaN,
-                    discontinuity = playhead.discontinuity,
-                )
-            }
+            val frameNanos = awaitLyricFrameNanos()
+            // Readings are stamped on the System.nanoTime clock. The frame
+            // time is that clock too wherever it is a vsync stamp, and is
+            // preferred for being evenly spaced. Anywhere it is not, the
+            // two are seconds apart and the real clock is used instead.
+            val system = System.nanoTime()
+            val now = if (abs(system - frameNanos) < SAME_CLOCK_NANOS) frameNanos else system
+            val sampledAt = playhead.sampledAtNanos
+            clock.longValue = engine.frame(
+                nowMs = nanosToMs(now),
+                reportedMs = playhead.positionMs,
+                sampledAtMs = if (sampledAt > 0L) nanosToMs(sampledAt) else Double.NaN,
+                discontinuity = playhead.discontinuity,
+            )
         }
     }
     return clock

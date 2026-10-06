@@ -108,9 +108,21 @@ interface PlayerHost {
      */
     @Composable
     fun LyricsShareSheet(hazeState: HazeState, request: LyricsShareRequest, onDismiss: () -> Unit) = Unit
+
+    /**
+     * Whether the desktop window is open on screen. The desktop host returns
+     * its window-visibility flag. The lyric clock ticks while this is true,
+     * including when the window does not have the keyboard, and stops when the
+     * window is hidden to the tray. The phone clock does not read this.
+     */
+    val windowOnScreen: StateFlow<Boolean>
+        get() = WindowOnScreenDefault
 }
 
 private val NoCast = MutableStateFlow(CastUi())
+
+/** The desktop host overrides this. Nothing on the phone reads it. */
+private val WindowOnScreenDefault = MutableStateFlow(true)
 
 /** What the output drawer needs to know about casting to draw its row. */
 data class CastUi(
