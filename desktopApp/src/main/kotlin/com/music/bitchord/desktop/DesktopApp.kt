@@ -1845,6 +1845,12 @@ fun BitChordDesktopApp() {
         if (current.artistId != null && current.albumId != null) return@LaunchedEffect
         trackLinks = DesktopSearchClient.trackLinks(current.videoId).getOrNull()
     }
+    // Probe once at startup when Rich Presence is already on, so the settings
+    // card can show "Sharing through the Discord app" without a visit first.
+    // Playback itself also connects on demand — see DesktopDiscordRpc.
+    LaunchedEffect(Unit) {
+        if (DesktopDiscordRpc.enabled.value) DesktopDiscordRpc.refreshLocalClient()
+    }
     // Keyed on the same things, plus the rate: Discord counts the bar down on
     // its own clock, so only a change to what it was told is worth another push.
     LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs, playbackSpeed) {
