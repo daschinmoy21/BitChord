@@ -27,6 +27,15 @@ internal class DesktopPlayhead {
         segments.addLast(Segment(frame, sourceUs.toDouble(), usPerFrame))
     }
 
+    /** From [frame] on the track plays from [sourceUs] — a new track queued behind the old one's tail. */
+    fun jump(frame: Long, sourceUs: Long, usPerFrame: Double) {
+        val last = segments.lastOrNull()
+        val at = maxOf(frame, last?.frame ?: frame)
+        if (last != null && at == last.frame) segments.removeLast()
+        segments.addLast(Segment(at, sourceUs.toDouble(), usPerFrame))
+        while (segments.size > MAX_SEGMENTS) segments.removeFirst()
+    }
+
     /**
      * From [frame] — the first not yet written — each output frame covers [usPerFrame] of source,
      * after a jump of [skippedUs] that was never written at all.
