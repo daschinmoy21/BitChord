@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
@@ -12,7 +13,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.round
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.ImageFilter
@@ -34,12 +35,15 @@ internal actual fun rememberLyricClockActive(): Boolean {
 }
 
 internal actual suspend fun awaitLyricFrameNanos(): Long {
-    delay(LYRIC_FRAME_DELAY_MS)
-    return System.nanoTime()
+    // A focused window delivers vsync inside this wait. An unfocused one may
+    // never request a frame, and blocking in withFrameNanos is what froze the
+    // lyrics. The wall clock keeps the playhead moving, and the state write
+    // that follows asks the window to draw.
+    return withTimeoutOrNull(LYRIC_FRAME_WAIT_MS) { withFrameNanos { it } } ?: System.nanoTime()
 }
 
-/** About one frame at 60 Hz. An unfocused AWT window may never deliver a compose frame. */
-private const val LYRIC_FRAME_DELAY_MS = 16L
+/** Long enough for a late vsync, short enough that a missing frame does not stall the line. */
+private const val LYRIC_FRAME_WAIT_MS = 32L
 
 // Skia blurs at every size; there is no platform floor to check.
 internal actual val renderEffectBlurSupported: Boolean = true
