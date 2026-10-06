@@ -1,6 +1,11 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.LibraryPage
+import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.UiState
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.runBlocking
@@ -124,6 +129,163 @@ class DesktopNavidromeTest {
         assertNull(DesktopNavidromeSource.parseTrack("navidrome:source/"))
         assertNull(DesktopNavidromeSource.parseTrack("addon:source/id"))
     }
+
+    @Test
+    fun `an album key round-trips and rejects a youtube id and a track key`() {
+        val key = DesktopNavidromeSource.albumKey("source-1", "7orvCZZyWRqsduCdqXoguY")
+        assertEquals("navidrome-album:source-1/7orvCZZyWRqsduCdqXoguY", key)
+        assertEquals(
+            DesktopNavidromeSource.AlbumRef("source-1", "7orvCZZyWRqsduCdqXoguY"),
+            DesktopNavidromeSource.parseAlbum(key),
+        )
+        assertEquals(
+            key,
+            DesktopNavidromeSource.parseAlbum(key)?.let { DesktopNavidromeSource.albumKey(it.sourceId, it.albumId) },
+        )
+        assertNull(DesktopNavidromeSource.parseAlbum("MPREb_youtube"))
+        assertNull(DesktopNavidromeSource.parseAlbum(DesktopNavidromeSource.trackKey("source-1", "7rsQgbwasf6T1SP9mnVTWZ")))
+        assertNull(DesktopNavidromeSource.parseAlbum("navidrome-album:nosource"))
+        assertNull(DesktopNavidromeSource.parseAlbum("navidrome-album:source/"))
+    }
+
+    @Test
+    fun `merging server albums keeps a youtube album and replaces the previous navidrome set`() {
+        val youtube = shelfCard("YouTube", "MPREb_yt")
+        val previous = shelfCard("Old", DesktopNavidromeSource.albumKey("s", "old"))
+        val page = LibraryPage(
+            likedSongs = emptyList(),
+            librarySongs = emptyList(),
+            shelves = listOf(
+                HomeShelf(YtMusicRepository.PLAYLISTS_SHELF, listOf(shelfCard("Liked", "VLLM"))),
+                HomeShelf(ALBUMS_SHELF, listOf(youtube, previous)),
+                HomeShelf("Artists", listOf(shelfCard("Artist", "UCartist"))),
+            ),
+        )
+        val fresh = shelfCard("New", DesktopNavidromeSource.albumKey("s", "new"))
+        val once = page.withServerAlbums(listOf(fresh))
+        assertEquals(
+            listOf("MPREb_yt", DesktopNavidromeSource.albumKey("s", "new")),
+            once.shelves.first { it.title == ALBUMS_SHELF }.items.map { it.browseId },
+        )
+        assertEquals(listOf("Playlists", ALBUMS_SHELF, "Artists"), once.shelves.map { it.title })
+        assertEquals(once.shelves, once.withServerAlbums(listOf(fresh)).shelves)
+    }
+
+    @Test
+    fun `a later empty merge removes only the navidrome cards`() {
+        val youtube = shelfCard("YouTube", "MPREb_yt")
+        val page = LibraryPage(
+            emptyList(),
+            emptyList(),
+            listOf(
+                HomeShelf(YtMusicRepository.PLAYLISTS_SHELF, listOf(shelfCard("Liked", "VLLM"))),
+                HomeShelf(ALBUMS_SHELF, listOf(youtube)),
+                HomeShelf("Artists", listOf(shelfCard("Artist", "UCartist"))),
+            ),
+        )
+        val server = shelfCard("Server", DesktopNavidromeSource.albumKey("s", "a"))
+        val merged = page.withServerAlbums(listOf(server))
+        assertEquals(
+            listOf("MPREb_yt", server.browseId),
+            merged.shelves.first { it.title == ALBUMS_SHELF }.items.map { it.browseId },
+        )
+        val cleared = merged.withServerAlbums(emptyList())
+        assertEquals(listOf(youtube.browseId), cleared.shelves.first { it.title == ALBUMS_SHELF }.items.map { it.browseId })
+        assertEquals(page.shelves.map { it.title }, cleared.shelves.map { it.title })
+        assertEquals(
+            page.shelves.first { it.title == "Artists" }.items,
+            cleared.shelves.first { it.title == "Artists" }.items,
+        )
+    }
+
+    @Test
+    fun `server albums are inserted after playlists when the page has no albums shelf`() {
+        val album = shelfCard("Album", DesktopNavidromeSource.albumKey("s", "a"))
+        val afterPlaylists = LibraryPage(
+            emptyList(),
+            emptyList(),
+            listOf(
+                HomeShelf(YtMusicRepository.PLAYLISTS_SHELF, emptyList()),
+                HomeShelf("Artists", emptyList()),
+            ),
+        ).withServerAlbums(listOf(album))
+        assertEquals(listOf("Playlists", ALBUMS_SHELF, "Artists"), afterPlaylists.shelves.map { it.title })
+        val atStart = LibraryPage(
+            emptyList(),
+            emptyList(),
+            listOf(HomeShelf("Artists", emptyList())),
+        ).withServerAlbums(listOf(album))
+        assertEquals(listOf(ALBUMS_SHELF, "Artists"), atStart.shelves.map { it.title })
+        val removed = LibraryPage(
+            emptyList(),
+            emptyList(),
+            listOf(HomeShelf(ALBUMS_SHELF, listOf(album))),
+        ).withServerAlbums(emptyList())
+        assertTrue(removed.shelves.none { it.title == ALBUMS_SHELF })
+    }
+
+    @Test
+    fun `album pages stop on a short page and when an id repeats`() = runBlocking {
+        assertEquals(500, ALBUM_PAGE_SIZE)
+        assertEquals(40, ALBUM_PAGE_LIMIT)
+        val offsets = mutableListOf<Int>()
+        val paged = collectAlbumPages(pageSize = 3) { offset ->
+            offsets += offset
+            when (offset) {
+                0 -> listOf(
+                    NavidromeAlbum(id = "a", name = "A"),
+                    NavidromeAlbum(id = "b", name = "B"),
+                    NavidromeAlbum(id = " ", name = "blank"),
+                )
+                3 -> listOf(NavidromeAlbum(id = "c", name = "C"))
+                else -> error("fetched past the short page")
+            }
+        }
+        // A full page is followed. The blank id is skipped, and the short page ends the walk.
+        assertEquals(listOf(0, 3), offsets)
+        assertEquals(listOf("a", "b", "c"), paged.map { it.id })
+
+        var calls = 0
+        val repeated = collectAlbumPages { offset ->
+            calls++
+            if (offset == 0) {
+                List(ALBUM_PAGE_SIZE) { NavidromeAlbum(id = "p$it", name = "n$it") }
+            } else {
+                listOf(NavidromeAlbum(id = "p0", name = "again")) +
+                    List(10) { NavidromeAlbum(id = "new$it", name = "new$it") }
+            }
+        }
+        assertEquals(2, calls)
+        assertEquals(ALBUM_PAGE_SIZE, repeated.size)
+        assertTrue(repeated.none { it.id.startsWith("new") })
+
+        var capped = 0
+        val stopped = collectAlbumPages(pageSize = 1, maxPages = 2) {
+            capped++
+            listOf(NavidromeAlbum(id = "c$capped", name = "c"))
+        }
+        assertEquals(2, capped)
+        assertEquals(listOf("c1", "c2"), stopped.map { it.id })
+    }
+
+    @Test
+    fun `a loading youtube library stays loading and a failure can still show server albums`() {
+        val album = shelfCard("Album", DesktopNavidromeSource.albumKey("s", "a"))
+        assertTrue(UiState.Loading.mergingServerAlbums(listOf(album)) is UiState.Loading)
+        val failed = UiState.Error("offline")
+        assertEquals(failed, failed.mergingServerAlbums(emptyList()))
+        val shown = failed.mergingServerAlbums(listOf(album)) as UiState.Success
+        assertEquals(listOf(ALBUMS_SHELF), shown.data.shelves.map { it.title })
+        assertEquals(album.browseId, shown.data.shelves.single().items.single().browseId)
+    }
+
+    private fun shelfCard(title: String, browseId: String) = ShelfItem(
+        title = title,
+        subtitle = "sub",
+        thumbnailUrl = null,
+        videoId = null,
+        browseId = browseId,
+    )
 
     @Test
     fun `an original flac is lossless and states what the file is`() {

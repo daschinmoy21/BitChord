@@ -116,6 +116,11 @@ fun LibraryScreen(
     deviceItems: List<ShelfItem>,
     /** The big "Library" heading; the desktop's pages carry none. */
     showTitle: Boolean = true,
+    /**
+     * Shelves drawn when signed out. The phone passes nothing, so signing out
+     * there still ends on the sign-in message.
+     */
+    signedOutShelves: List<HomeShelf> = emptyList(),
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
@@ -166,6 +171,16 @@ fun LibraryScreen(
                         onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                         onShowAll = { onShowAll(emptyPlaylists) },
                     )
+                }
+                signedOutShelves.forEach { shelf ->
+                    item(key = "shelf:${shelf.title}") {
+                        LibraryGridShelf(
+                            shelf = shelf,
+                            onItemClick = onShelfItemClick,
+                            onItemLongPress = onShelfItemLongPress,
+                            onShowAll = { onShowAll(shelf) },
+                        )
+                    }
                 }
                 item {
                     MessageState(
