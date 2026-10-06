@@ -55,18 +55,35 @@ internal object DesktopDiscordRpc {
     /** Whether a Discord on this machine is answering, so no token is needed. */
     val localClient: StateFlow<Boolean> = _localClient
 
-    /** Looks for a local Discord. Cheap, and the answer changes when one starts. */
+    /**
+     * Looks for a local Discord.
+     *
+     * Cheap enough to call from settings and from startup. Discord that was not
+     * running when BitChord launched shows up the next time this runs — and
+     * [onPlaybackStateChanged] also probes on its own, so opening Integrations
+     * is no longer required for presence to work.
+     */
     fun refreshLocalClient() {
         scope.launch {
-            val found = DesktopDiscordIpc.connect(APPLICATION_ID)
-            if (found != null) {
-                ipc?.close()
-                ipc = found
-                _localClient.value = true
-            } else {
-                _localClient.value = ipc != null
-            }
+            runCatching { ipc?.close() }
+            ipc = null
+            ensureLocalClient()
         }
+    }
+
+    /** Connects to a local Discord if we do not already hold a socket. */
+    private fun ensureLocalClient(): Boolean {
+        if (ipc != null) {
+            _localClient.value = true
+            return true
+        }
+        val found = DesktopDiscordIpc.connect(APPLICATION_ID) ?: run {
+            _localClient.value = false
+            return false
+        }
+        ipc = found
+        _localClient.value = true
+        return true
     }
 
     private val _username = MutableStateFlow(DesktopPersistence().string(KEY_USERNAME, ""))
@@ -102,7 +119,11 @@ internal object DesktopDiscordRpc {
     fun setEnabled(value: Boolean) {
         DesktopPersistence().saveBoolean(KEY_ENABLED, value)
         _enabled.value = value
-        if (!value) clear()
+        if (!value) {
+            clear()
+            return
+        }
+        refreshLocalClient()
     }
 
     /**
@@ -114,10 +135,13 @@ internal object DesktopDiscordRpc {
      * decides. Playback speed is divided out of both instants: at 1.5x the
      * wall-clock time left is not the media time left, and a presence that
      * ignored that would finish its countdown mid-song.
+     *
+     * When Rich Presence is on and no socket is held yet, this probes for a
+     * local Discord before giving up. That covers Discord starting after
+     * BitChord, and the common case where Integrations was never opened.
      */
     fun onPlaybackStateChanged(state: DesktopPlaybackState, speed: Float) {
         if (!_enabled.value) return
-        if (_token.value.isBlank() && ipc == null) return
         val song = state.song
         if (song == null || !state.isPlaying) {
             clear()
@@ -137,6 +161,11 @@ internal object DesktopDiscordRpc {
             } else {
                 song.title
             }
+            // Probe before publishing when we have no socket and no token —
+            // otherwise presence stays dark until Integrations is opened.
+            if (ipc == null && _token.value.isBlank()) {
+                ensureLocalClient()
+            }
             // The socket first, and the gateway only if there is no socket:
             // publishing through both would put the same presence up twice.
             val local = ipc
@@ -149,7 +178,12 @@ internal object DesktopDiscordRpc {
                 ipc = null
                 _localClient.value = false
             }
-            if (_token.value.isBlank()) return@launch
+            if (_token.value.isBlank()) {
+                // Leave lastKey clear so the next track change tries again —
+                // Discord may simply not have been running yet.
+                if (lastKey == key) lastKey = null
+                return@launch
+            }
             runCatching {
                 val client = rpc ?: KizzyRPC(
                     token = _token.value,
