@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.model.Song
 import org.bytedeco.ffmpeg.avcodec.AVCodecContext
 import org.bytedeco.ffmpeg.avcodec.AVPacket
 import org.bytedeco.ffmpeg.avformat.AVFormatContext
@@ -99,8 +100,8 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
     /** Set once the container is exhausted, so the drain runs exactly once. */
     private var drained = false
 
-    /** Live only while this decoder reads through windowed HTTP; see [open]. */
-    private var rangeSource: DesktopRangeStream? = null
+    /** Live only while this decoder reads through its own I/O instead of FFmpeg's. */
+    private var byteSource: DesktopByteSource? = null
     private var avio: AVIOContext? = null
     private var readPacket: Read_packet_Pointer_BytePointer_int? = null
     private var seekPacket: Seek_Pointer_long_int? = null
@@ -139,6 +140,12 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         windowed: Boolean = false,
         /** Explicit demuxer for an extensionless add-on manifest. */
         transport: String? = null,
+        /**
+         * When both are set and [url] is a plain HTTP file, the bytes are kept by
+         * [DesktopSongCache] and the next play of [song] opens the file.
+         */
+        song: Song? = null,
+        stream: DesktopStream? = null,
     ): Result<Unit> = runCatching {
         av_log_set_level(AV_LOG_ERROR)
         ensureNetwork()
@@ -158,14 +165,30 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         av_dict_set(options, "reconnect_delay_max", "5", 0)
         av_dict_set(options, "rw_timeout", "15000000", 0)
 
-        val opened = if (windowed) windowedContext(url, headers) else AVFormatContext(null)
+        val cacheSong = song?.takeIf {
+            stream != null && transport == null &&
+                (url.startsWith("http://") || url.startsWith("https://"))
+        }
+        val opened = if (cacheSong != null && stream != null) {
+            customContext(DesktopSongCache.open(cacheSong, stream))
+        } else if (windowed) {
+            customContext(DesktopRangeStream(url, headers))
+        } else {
+            AVFormatContext(null)
+        }
+        val caching = cacheSong != null
         // The code matters.
         val inputFormat: AVInputFormat? = when (transport?.lowercase()) {
             DesktopAddonStream.HLS -> av_find_input_format("hls")
             DesktopAddonStream.DASH -> av_find_input_format("dash")
             else -> null
         }
-        val status = avformat_open_input(opened, if (windowed) null as String? else url, inputFormat, options)
+        val status = avformat_open_input(
+            opened,
+            if (caching || windowed) null as String? else url,
+            inputFormat,
+            options,
+        )
         check(status >= 0) { "could not open stream (${describe(status)})" }
         format = opened
         check(avformat_find_stream_info(opened, null as AVDictionary?) >= 0) { "no stream info" }
@@ -264,11 +287,9 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
     }
 
     /**
-     * A format context reading through [DesktopRangeStream] rather than through FFmpeg's own HTTP
-     * client.
+     * A format context reading through [source] rather than through FFmpeg's own HTTP client.
      */
-    private fun windowedContext(url: String, headers: Map<String, String>): AVFormatContext {
-        val source = DesktopRangeStream(url, headers)
+    private fun customContext(source: DesktopByteSource): AVFormatContext {
         val scratch = ByteArray(IO_BUFFER_BYTES)
         val read = object : Read_packet_Pointer_BytePointer_int() {
             override fun call(opaque: Pointer?, buffer: BytePointer?, size: Int): Int {
@@ -298,7 +319,7 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         // avformat_open_input sets AVFMT_FLAG_CUSTOM_IO itself when it finds a context that already
         // has a pb, so there is no flag to set here.
         context.pb(io)
-        rangeSource = source
+        byteSource = source
         readPacket = read
         seekPacket = seek
         avio = io
@@ -493,7 +514,7 @@ internal class DesktopAudioDecoder : DesktopSampleSource {
         seekPacket?.deallocate()
         readPacket = null
         seekPacket = null
-        rangeSource = null
+        byteSource = null
     }
 
     internal companion object {

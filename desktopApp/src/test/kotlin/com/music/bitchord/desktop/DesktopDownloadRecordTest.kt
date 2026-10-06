@@ -23,6 +23,7 @@ class DesktopDownloadRecordTest {
 
     @AfterTest
     fun cleanUp() {
+        DesktopDownloadManager.libraryLookup = { emptyMap() }
         scratch.toFile().deleteRecursively()
     }
 
@@ -60,6 +61,21 @@ class DesktopDownloadRecordTest {
         val empty = scratch.resolve("empty.m4a")
         Files.write(empty, ByteArray(0))
         assertFalse(DesktopDownloadManager.isSaved(song("c", empty.toString())))
+    }
+
+    @Test
+    fun `a play from search uses the download recorded for that id`() {
+        val path = realFile("library.webm")
+        DesktopDownloadManager.libraryLookup = { mapOf("dior" to path) }
+        val fromSearch = song("dior", null).copy(localUri = null)
+        assertEquals(path, DesktopDownloadManager.savedFile(fromSearch)?.toString())
+        assertTrue(DesktopDownloadManager.isSaved(fromSearch))
+    }
+
+    @Test
+    fun `a recorded path that is gone is not handed to the decoder`() {
+        DesktopDownloadManager.libraryLookup = { mapOf("missing" to scratch.resolve("nope.webm").toString()) }
+        assertNull(DesktopDownloadManager.savedFile(song("missing", null)))
     }
 
     @Test

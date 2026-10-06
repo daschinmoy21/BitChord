@@ -611,6 +611,11 @@ fun BitChordDesktopApp() {
     var dislikedIds by remember { mutableStateOf(persistence.dislikedIds()) }
     val overlays = remember { DesktopOverlays() }
     var downloads by remember { mutableStateOf(persistence.downloads()) }
+    // A play from search or the radio has no localPath. The download list is what says the file
+    // is already in the user's folder.
+    DesktopDownloadManager.libraryLookup = {
+        downloads.mapNotNull { item -> item.localPath?.let { item.videoId to it } }.toMap()
+    }
     var localSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
     val downloadQueue by DesktopDownloadQueue.active.collectAsState()
     val downloadInProgress = downloadQueue.keys

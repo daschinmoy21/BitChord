@@ -8,12 +8,11 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.extension
 
 /**
- * The media this app keeps on disk so it is not fetched twice — motion-artwork clips today.
+ * The media this app keeps on disk so it is not fetched twice.
  *
- * Android bounds the same thing with `AudioCache`'s LRU evictor and a limit the Storage settings
- * set. Desktop's audio is demuxed straight from the source by FFmpeg rather than written through a
- * cache, so what accumulates here is the clips, which loop dozens of times behind one track and
- * without this were re-downloaded on every loop.
+ * Songs live in [directory]/songs, written by [DesktopSongCache]. Clips live in [directory]
+ * itself: a canvas loop used to re-download on every pass. Both count toward the Storage limit.
+ * Android bounds the same thing with `AudioCache`'s LRU evictor.
  */
 internal object DesktopMediaCache {
 
@@ -36,13 +35,14 @@ internal object DesktopMediaCache {
     fun pathFor(url: String, extension: String): Path =
         known.getOrPut("$url|$extension") { directory.resolve("${digest(url)}.$extension") }
 
-    /** What the cache is currently holding, in bytes. */
-    fun sizeBytes(): Long = files().sumOf { runCatching { Files.size(it) }.getOrDefault(0L) }
+    /** What the cache is currently holding, in bytes. Songs and clips both count. */
+    fun sizeBytes(): Long = managed().sumOf { runCatching { Files.size(it) }.getOrDefault(0L) }
 
     /** Everything in it, thrown away. Returns how many bytes were freed. */
     fun clear(): Long {
         val freed = sizeBytes()
-        files().forEach { runCatching { Files.deleteIfExists(it) } }
+        DesktopSongCache.abandon()
+        managed().forEach { runCatching { Files.deleteIfExists(it) } }
         known.clear()
         return freed
     }
@@ -57,7 +57,9 @@ internal object DesktopMediaCache {
         val limit = limitBytes()
         var total = sizeBytes()
         if (total <= limit) return
-        files()
+        val pinned = DesktopSongCache.pinned()
+        managed()
+            .filter { it !in pinned }
             .sortedBy { path ->
                 runCatching {
                     Files.readAttributes(path, BasicFileAttributes::class.java).lastAccessTime().toMillis()
@@ -86,6 +88,17 @@ internal object DesktopMediaCache {
             stream.filter(Files::isRegularFile).toList()
         }
     }.getOrDefault(emptyList())
+
+    /** Song files. Kept in a subdirectory so a clip listing does not have to skip them. */
+    private fun songFiles(): List<Path> = runCatching {
+        val songs = directory.resolve("songs")
+        if (!Files.isDirectory(songs)) return emptyList()
+        Files.list(songs).use { stream ->
+            stream.filter(Files::isRegularFile).toList()
+        }
+    }.getOrDefault(emptyList())
+
+    private fun managed(): List<Path> = files() + songFiles()
 
     private fun digest(url: String): String = MessageDigest.getInstance("SHA-256")
         .digest(url.toByteArray())

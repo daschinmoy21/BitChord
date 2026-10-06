@@ -7,15 +7,28 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 
+/** A file the decoder can seek and read. [DesktopRangeStream] and the song cache both are. */
+internal interface DesktopByteSource {
+    /** Total length in bytes, or -1 while the source has not said. */
+    val length: Long
+
+    fun position(): Long
+
+    fun seek(offset: Long)
+
+    /** Fills up to [count] bytes at the current position. -1 at the end of the file. */
+    fun read(into: ByteArray, count: Int): Int
+}
+
 /** Reads a remote file in bounded windows rather than as one open-ended request. */
 internal class DesktopRangeStream(
     private val url: String,
     private val headers: Map<String, String> = emptyMap(),
     private val windowBytes: Int = DEFAULT_WINDOW,
-) {
+) : DesktopByteSource {
 
     /** Total length in bytes, or -1 until the first response has stated one. */
-    var length: Long = -1L
+    override var length: Long = -1L
         private set
 
     private var position = 0L
@@ -25,9 +38,9 @@ internal class DesktopRangeStream(
     private var windowStart = -1L
 
     /** Where the next read will come from. */
-    fun position(): Long = position
+    override fun position(): Long = position
 
-    fun seek(offset: Long) {
+    override fun seek(offset: Long) {
         position = offset.coerceAtLeast(0)
     }
 
@@ -35,7 +48,7 @@ internal class DesktopRangeStream(
      * Fills up to [count] bytes at the current position, returning how many — or -1 at the end of
      * the file.
      */
-    fun read(into: ByteArray, count: Int): Int {
+    override fun read(into: ByteArray, count: Int): Int {
         if (count <= 0) return 0
         if (length >= 0 && position >= length) return -1
         if (!holds(position) && !fetchWindowFor(position)) return -1

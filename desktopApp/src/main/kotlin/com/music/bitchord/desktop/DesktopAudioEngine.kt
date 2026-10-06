@@ -229,8 +229,8 @@ class DesktopPlaybackEngine(
             // so a URI for "Justin Bieber - Peaches (feat. …).m4a" sent it looking for a file
             // literally named "Justin%20Bieber%20-%20…" and it answered ENOENT for a file that was
             // sitting right there.
-            val localUrl = DesktopDownloadManager.savedFile(song)?.toAbsolutePath()?.toString()
-            val resolved = localUrl?.let { Result.success(DesktopLiveResolution(DesktopStream(it))) }
+            val stored = storedStream(song)
+            val resolved = stored?.let { Result.success(DesktopLiveResolution(it)) }
                 ?: DesktopMusicSources.resolveLive(song, audioQuality, excludedSourceId)
             resolved.fold(
                 onSuccess = { live ->
@@ -256,6 +256,19 @@ class DesktopPlaybackEngine(
         }
     }
 
+    /**
+     * A file already on disk for [song]: the download, or a song the cache finished last time.
+     * Either one skips the source resolve, which is the spinner.
+     */
+    private fun storedStream(song: Song): DesktopStream? {
+        DesktopDownloadManager.savedFile(song)?.let { path ->
+            return DesktopStream(path.toAbsolutePath().toString())
+        }
+        val cached = DesktopSongCache.bestComplete(song.videoId) ?: return null
+        DesktopTrackLog.log("'${song.title}' is in the song cache")
+        return cached.asStream()
+    }
+
     /** Opens a decoder on [stream], off the audio thread. */
     private suspend fun openTrack(song: Song, stream: DesktopStream, startAtMs: Long): Result<Track> =
         withContext(Dispatchers.IO) {
@@ -268,6 +281,8 @@ class DesktopPlaybackEngine(
                 requested = DesktopPcmFormat(44_100, 2, bytesPerSample = 4, isFloat = true),
                 windowed = stream.windowedReads,
                 transport = stream.transport,
+                song = song,
+                stream = stream,
             ).map {
                 if (startAtMs > 0) decoder.seek(startAtMs * 1_000)
                 // From here the decoder belongs to its own read-ahead thread: the audio thread only
@@ -479,7 +494,7 @@ class DesktopPlaybackEngine(
         nextSong = song
         // A download plays from its file, here as in [loadInternal] — never from whichever source
         // would have answered for it.
-        val local = DesktopDownloadManager.savedFile(song)?.toAbsolutePath()?.toString()?.let { DesktopStream(it) }
+        val local = storedStream(song)
         nextLocalStream = local
         // Measured on YouTube Opus (or the file) whatever will end up serving it, so Automix has
         // its analysis without anything being fetched from the source that will play it.
@@ -525,8 +540,13 @@ class DesktopPlaybackEngine(
                                 live.pendingSubstitute?.cancel()
                                 return@fold
                             }
+                            val from = if (live.stream.url.startsWith("http")) {
+                                DesktopMusicSources.sourceNameFor(live.stream)
+                            } else {
+                                "disk"
+                            }
                             DesktopTrackLog.log(
-                                "incoming '${song.title}' ready from ${DesktopMusicSources.sourceNameFor(live.stream)}" +
+                                "incoming '${song.title}' ready from $from" +
                                     " in ${(System.nanoTime() - askedAt) / 1_000_000}ms",
                             )
                             commands += Command.Upcoming(track)

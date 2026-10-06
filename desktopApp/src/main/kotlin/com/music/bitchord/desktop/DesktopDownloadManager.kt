@@ -133,13 +133,26 @@ object DesktopDownloadManager {
      * deleted. Android checks before it answers for the same reason — without it the player is
      * handed a path that is simply not there and the track refuses to play, saying only "could not
      * open stream".
+     *
+     * A row from search or the radio does not carry [Song.localPath]. [libraryLookup] is the
+     * download list, so a file already in the user's folder is used anyway. Tests leave the
+     * lookup empty.
      */
+    @Volatile
+    internal var libraryLookup: () -> Map<String, String> = { emptyMap() }
+
+
     fun savedFile(song: Song): Path? {
-        val path = song.localPath?.let { runCatching { Path.of(it) }.getOrNull() }
-            ?: song.localUri?.takeIf { it.startsWith("file:") }
-                ?.let { runCatching { Path.of(URI(it)) }.getOrNull() }
-            ?: return null
-        return path.takeIf { Files.isRegularFile(it) && runCatching { Files.size(it) > 0 }.getOrDefault(false) }
+        existing(song.localPath)?.let { return it }
+        song.localUri?.takeIf { it.startsWith("file:") }?.let { uri ->
+            existing(runCatching { Path.of(URI(uri)).toString() }.getOrNull())?.let { return it }
+        }
+        return existing(libraryLookup()[song.videoId])
+    }
+
+    private fun existing(path: String?): Path? {
+        val file = path?.let { runCatching { Path.of(it) }.getOrNull() } ?: return null
+        return file.takeIf { Files.isRegularFile(it) && runCatching { Files.size(it) > 0 }.getOrDefault(false) }
     }
 
     /** Whether [song] is really on this computer, rather than merely recorded as being. */
