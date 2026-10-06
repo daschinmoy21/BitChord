@@ -452,13 +452,11 @@ class DesktopPlaybackEngine(
 
     fun setCrossfadeSeconds(seconds: Int) {
         crossfadeSeconds = seconds.coerceIn(0, MAX_CROSSFADE_SECONDS)
-        if (crossfadeSeconds == 0 && !automixEnabled) clearUpcoming()
     }
 
     /** Enables Android's separate Automix setting. */
     fun setAutomixEnabled(enabled: Boolean) {
         automixEnabled = enabled
-        if (!enabled && crossfadeSeconds == 0) clearUpcoming()
     }
 
     /** Resolves and prepares the next queue item without starting it. */
@@ -475,7 +473,9 @@ class DesktopPlaybackEngine(
         }
         nextResolveJob?.cancel()
         clearUpcoming()
-        if (song == null || transitionSecondsFor(song) == 0) return
+        // Read ahead even with no blend configured: the track still has to be open when this one
+        // ends, or the hand-over waits on a resolve and the album is not gapless.
+        if (song == null) return
         nextSong = song
         // A download plays from its file, here as in [loadInternal] — never from whichever source
         // would have answered for it.
@@ -686,6 +686,8 @@ class DesktopPlaybackEngine(
     private var mixed = FloatArray(0)
     private var endPadding = FloatArray(0)
     private val transitionGains = FloatArray(2)
+    /** Frame count at which a no-blend hand-over takes effect: the outgoing track's tail plays until then. */
+    private var handoverFrame = 0L
     private var currentReadCount = 0
     private var incomingReadCount = 0
 
@@ -1046,8 +1048,18 @@ class DesktopPlaybackEngine(
         // audio, which only a manual seek could put right.
         // Less what is still queued in the sink: [playhead] restarts from the played-frame count
         // here, so the queued audio — this track's — is counted again as it plays out.
-        val handoverUs = incoming.startUs + incomingElapsedUs() - queuedSourceUs(deckRate(incoming))
-        resetPlayhead(incoming, handoverUs)
+        val handoverUs = if (plan == null) incoming.startUs else {
+            incoming.startUs + incomingElapsedUs() - queuedSourceUs(deckRate(incoming))
+        }
+        if (plan == null) {
+            // No blend: the queue still holds the outgoing track's tail, so the incoming one is
+            // at its start only once that has played out — a jump recorded at the next frame
+            // written, not a reset to the frame being heard now.
+            playhead.jump(framesWritten, incoming.startUs, usPerFrame(incoming))
+            handoverFrame = framesWritten
+        } else {
+            resetPlayhead(incoming, handoverUs)
+        }
         DesktopTrackLog.log(
             "transition complete: '${incoming.song.title}' resumes at " +
                 "${"%.1f".format(handoverUs / 1_000_000.0)}s " +
@@ -1405,7 +1417,9 @@ class DesktopPlaybackEngine(
             }
             return
         }
-        val positionMs = (playhead.at(sink.framesPlayed()) / 1_000).coerceAtLeast(0)
+        val heard = sink.framesPlayed()
+        // Until the previous track's queued tail has played out, this one is still at its start.
+        val positionMs = if (heard < handoverFrame) track.startUs / 1_000 else (playhead.at(heard) / 1_000).coerceAtLeast(0)
         // Taken with the reading, here on the audio thread: see DesktopPlaybackState.
         val sampledAt = System.nanoTime()
         if (_state.value.song?.videoId != track.song.videoId) return
