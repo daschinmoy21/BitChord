@@ -1,6 +1,12 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.HomeShelf
+import com.music.bitchord.data.model.LibraryPage
+import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.model.UiState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -9,6 +15,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.http.encodeURLParameter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -257,7 +264,9 @@ internal class DesktopNavidromeClient(
 /** The listener's own Navidrome, as a place to find a copy of a track. */
 internal object DesktopNavidromeSource {
     private const val TRACK_PREFIX = "navidrome:"
+    private const val ALBUM_PREFIX = "navidrome-album:"
     private const val SEPARATOR = '/'
+    private const val ALBUM_LIST = "alphabeticalByName"
 
     private val clients = ConcurrentHashMap<String, Pair<String, DesktopNavidromeClient>>()
     private val rows = ConcurrentHashMap<String, NavidromeSong>()
@@ -272,6 +281,18 @@ internal object DesktopNavidromeSource {
         val at = encoded.indexOf(SEPARATOR)
         if (at < 1 || at == encoded.lastIndex) return null
         return TrackRef(encoded.substring(0, at), encoded.substring(at + 1))
+    }
+
+    fun albumKey(sourceId: String, albumId: String): String = "$ALBUM_PREFIX$sourceId$SEPARATOR$albumId"
+
+    data class AlbumRef(val sourceId: String, val albumId: String)
+
+    fun parseAlbum(browseId: String): AlbumRef? {
+        if (!browseId.startsWith(ALBUM_PREFIX)) return null
+        val encoded = browseId.removePrefix(ALBUM_PREFIX)
+        val at = encoded.indexOf(SEPARATOR)
+        if (at < 1 || at == encoded.lastIndex) return null
+        return AlbumRef(encoded.substring(0, at), encoded.substring(at + 1))
     }
 
     /** A client for [config], or null when there are no credentials to sign it with. */
@@ -401,4 +422,153 @@ internal object DesktopNavidromeSource {
             DesktopTrackLog.log("${config.displayName}: could not report a play — ${it.message}")
         }
     }
+
+    /**
+     * Albums on every enabled, complete Navidrome server.
+     * OFF, FIRST, and RACE still list albums. A disabled or incomplete server is skipped.
+     */
+    suspend fun libraryAlbums(configs: List<DesktopSourceConfig>): List<ShelfItem> {
+        val servers = configs.filter { config ->
+            config.kind == DesktopSourceKind.NAVIDROME && config.enabled && config.isComplete
+        }
+        val labelServer = servers.size > 1
+        return buildList {
+            for (config in servers) {
+                val server = client(config) ?: continue
+                val found = try {
+                    collectAlbumPages { offset ->
+                        server.albums(ALBUM_LIST, ALBUM_PAGE_SIZE, offset).getOrThrow()
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    DesktopTrackLog.log("${config.displayName}: could not list albums (${error.message})")
+                    emptyList()
+                }
+                val serverName = if (labelServer) config.displayName else null
+                found.forEach { album -> add(album.shelfItem(config.id, server, serverName)) }
+            }
+        }
+    }
+
+    /** One album's tracks, in the order [DesktopNavidromeClient.album] returned them. */
+    suspend fun openLibraryAlbum(ref: AlbumRef, fallback: DesktopCollection): Result<DesktopCollection> {
+        val config = DesktopSourceRegistry.navidromeConfig(ref.sourceId)
+            ?: return Result.failure(IllegalStateException("That server is no longer set up"))
+        val server = client(config) ?: return Result.failure(IllegalStateException("No login saved for this server"))
+        val loaded = server.album(ref.albumId)
+        val failure = loaded.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        return loaded.map { album ->
+            val songs = buildList {
+                for (row in album.song) {
+                    if (row.id.isBlank()) continue
+                    // stream() reads this map for the file format.
+                    rows["${config.id}$SEPARATOR${row.id}"] = row
+                    add(songOf(config.id, server, row))
+                }
+            }
+            DesktopCollection(
+                browseId = albumKey(ref.sourceId, ref.albumId),
+                title = album.name.ifBlank { fallback.title },
+                subtitle = album.artist.ifBlank { fallback.subtitle },
+                thumbnailUrl = album.coverArt?.takeIf(String::isNotBlank)?.let(server::coverArtUrl)
+                    ?: fallback.thumbnailUrl,
+                type = BrowseType.ALBUM,
+                songs = songs,
+            )
+        }
+    }
+
+    private fun NavidromeAlbum.shelfItem(
+        sourceId: String,
+        server: DesktopNavidromeClient,
+        serverName: String?,
+    ): ShelfItem {
+        val artistName = artist.trim()
+        val subtitle = when {
+            serverName == null -> artistName
+            artistName.isEmpty() -> serverName
+            else -> "$artistName • $serverName"
+        }
+        return ShelfItem(
+            title = name,
+            subtitle = subtitle,
+            thumbnailUrl = coverArt?.takeIf(String::isNotBlank)?.let(server::coverArtUrl),
+            videoId = null,
+            browseId = albumKey(sourceId, id),
+        )
+    }
+}
+
+/** `getAlbumList2` page size. A shorter page is the end of the list. */
+internal const val ALBUM_PAGE_SIZE = 500
+
+/** How many album pages one server is asked for before the walk stops. */
+internal const val ALBUM_PAGE_LIMIT = 40
+
+/** The library shelf title YouTube uses for saved albums. */
+internal const val ALBUMS_SHELF = "Albums"
+
+/**
+ * Pages [loadPage] until a page is shorter than [pageSize], its first id was already collected,
+ * or [maxPages] is reached. Blank ids are skipped.
+ */
+internal suspend fun collectAlbumPages(
+    pageSize: Int = ALBUM_PAGE_SIZE,
+    maxPages: Int = ALBUM_PAGE_LIMIT,
+    loadPage: suspend (offset: Int) -> List<NavidromeAlbum>,
+): List<NavidromeAlbum> {
+    val collected = ArrayList<NavidromeAlbum>()
+    val seen = HashSet<String>()
+    repeat(maxPages) { page ->
+        val batch = loadPage(page * pageSize)
+        val firstId = batch.firstOrNull()?.id
+        if (!firstId.isNullOrBlank() && firstId in seen) return collected
+        for (album in batch) {
+            if (album.id.isBlank() || !seen.add(album.id)) continue
+            collected += album
+        }
+        if (batch.size < pageSize) return collected
+    }
+    return collected
+}
+
+/**
+ * Drops Navidrome album cards already on [this], then appends [albums] to the Albums shelf.
+ * An empty [albums] leaves the YouTube cards in place.
+ */
+internal fun LibraryPage.withServerAlbums(albums: List<ShelfItem>): LibraryPage {
+    val cleaned = shelves.map { shelf ->
+        shelf.copy(
+            items = shelf.items.filter { item ->
+                DesktopNavidromeSource.parseAlbum(item.browseId.orEmpty()) == null
+            },
+        )
+    }.filterNot { it.title == ALBUMS_SHELF && it.items.isEmpty() }
+    if (albums.isEmpty()) return copy(shelves = cleaned)
+    val next = cleaned.toMutableList()
+    val at = next.indexOfFirst { it.title == ALBUMS_SHELF }
+    if (at >= 0) {
+        next[at] = next[at].copy(items = next[at].items + albums)
+    } else {
+        val playlists = next.indexOfFirst { it.title == YtMusicRepository.PLAYLISTS_SHELF }
+        val insertAt = if (playlists >= 0) playlists + 1 else 0
+        next.add(insertAt, HomeShelf(ALBUMS_SHELF, albums))
+    }
+    return copy(shelves = next)
+}
+
+/**
+ * What the Library screen renders. A YouTube load still in flight stays loading.
+ * A failed YouTube load keeps the error when [albums] is empty, and shows [albums] otherwise.
+ */
+internal fun UiState<LibraryPage>.mergingServerAlbums(albums: List<ShelfItem>): UiState<LibraryPage> = when (this) {
+    is UiState.Loading -> this
+    is UiState.Error -> if (albums.isEmpty()) {
+        this
+    } else {
+        UiState.Success(LibraryPage(emptyList(), emptyList(), emptyList()).withServerAlbums(albums))
+    }
+    is UiState.Success -> UiState.Success(data.withServerAlbums(albums))
 }

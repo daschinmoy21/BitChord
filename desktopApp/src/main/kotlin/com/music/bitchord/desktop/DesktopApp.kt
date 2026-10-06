@@ -764,6 +764,23 @@ fun BitChordDesktopApp() {
     }
     var audioQuality by remember { mutableStateOf(persistence.audioQuality()) }
     var sourceConfigs by remember { mutableStateOf(persistence.sourceConfigs()) }
+    var serverAlbums by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
+    LaunchedEffect(sourceConfigs) {
+        serverAlbums = withContext(Dispatchers.IO) {
+            DesktopNavidromeSource.libraryAlbums(sourceConfigs)
+        }
+    }
+    val renderedLibrary = remember(libraryState, serverAlbums) {
+        libraryState.mergingServerAlbums(serverAlbums)
+    }
+    LaunchedEffect(renderedLibrary) {
+        val open = libraryShowAll
+        if (open?.title != ALBUMS_SHELF) return@LaunchedEffect
+        val page = (renderedLibrary as? UiState.Success)?.data ?: return@LaunchedEffect
+        val updated = page.shelves.firstOrNull { it.title == ALBUMS_SHELF }
+            ?: HomeShelf(ALBUMS_SHELF, emptyList())
+        if (updated != open) libraryShowAll = updated
+    }
     var sourceStatus by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val youtubeSourceEnabled = sourceConfigs.any {
         it.kind == DesktopSourceKind.YOUTUBE && it.enabled
@@ -1059,13 +1076,18 @@ fun BitChordDesktopApp() {
             showCollection(current)
             return
         }
+        val hinted = fallback?.type?.takeIf { it != BrowseType.OTHER } ?: browseTypeOf(browseId)
         showCollection(
             DesktopCollection(
                 browseId = browseId,
                 title = fallback?.title.orEmpty(),
                 subtitle = fallback?.subtitle.orEmpty(),
                 thumbnailUrl = fallback?.thumbnailUrl,
-                type = fallback?.type?.takeIf { it != BrowseType.OTHER } ?: browseTypeOf(browseId),
+                type = if (hinted == BrowseType.OTHER && DesktopNavidromeSource.parseAlbum(browseId) != null) {
+                    BrowseType.ALBUM
+                } else {
+                    hinted
+                },
                 songs = emptyList(),
                 loading = true,
             ),
@@ -1078,6 +1100,21 @@ fun BitChordDesktopApp() {
     LaunchedEffect(openedCollection?.browseId, openedCollection?.loading, collectionReloads) {
         val pending = openedCollection?.takeIf { it.loading } ?: return@LaunchedEffect
         collectionError = null
+        val navidromeAlbum = DesktopNavidromeSource.parseAlbum(pending.browseId)
+        if (navidromeAlbum != null) {
+            val loaded = withContext(Dispatchers.IO) {
+                DesktopNavidromeSource.openLibraryAlbum(navidromeAlbum, pending)
+            }
+            loaded.fold(
+                onSuccess = { opened ->
+                    if (openedCollection?.browseId == pending.browseId) openedCollection = opened
+                },
+                onFailure = {
+                    collectionError = it.message ?: "Could not open ${pending.title.ifBlank { "this album" }}"
+                },
+            )
+            return@LaunchedEffect
+        }
         DesktopSearchClient.browse(
             browseId = pending.browseId,
             fallback = BrowseItem(
@@ -1109,6 +1146,7 @@ fun BitChordDesktopApp() {
      * only: an artist's is a channel link, not a release.
      */
     fun shareCollection(collection: DesktopCollection) {
+        if (DesktopNavidromeSource.parseAlbum(collection.browseId) != null) return
         val id = collection.browseId
         val url = when (collection.type) {
             BrowseType.PLAYLIST -> "https://music.youtube.com/playlist?list=${id.removePrefix("VL")}"
@@ -3717,6 +3755,7 @@ fun BitChordDesktopApp() {
                             onRename = { overlays.rename = true }.takeIf { openedCollection?.owned == true },
                             onShare = openedCollection
                                 ?.takeIf { it.type == BrowseType.ALBUM || it.type == BrowseType.PLAYLIST }
+                                ?.takeIf { DesktopNavidromeSource.parseAlbum(it.browseId) == null }
                                 ?.let { collection -> { shareCollection(collection) } },
                             onDelete = { overlays.delete = true }.takeIf { openedCollection?.owned == true },
                             onRemoveFromPlaylist = ::removeFromOpenPlaylist
@@ -3891,7 +3930,7 @@ fun BitChordDesktopApp() {
                         }
                         destination == DesktopDestination.LIBRARY -> LibraryScreen(
                             signedIn = youtubeSignedIn,
-                            state = libraryState,
+                            state = renderedLibrary,
                             listState = libraryListState,
                             onShelfItemClick = ::openLibraryItem,
                             onShelfItemLongPress = { item -> if (item.videoId != null) openMenu(item.toSong()) },
@@ -3931,6 +3970,13 @@ fun BitChordDesktopApp() {
                             links = libraryLinks,
                             deviceItems = libraryDeviceItems,
                             showTitle = false,
+                            signedOutShelves = if (youtubeSignedIn) {
+                                emptyList()
+                            } else {
+                                (renderedLibrary as? UiState.Success)?.data?.shelves
+                                    ?.filter { it.title == ALBUMS_SHELF }
+                                    .orEmpty()
+                            },
                         )
                         destination == DesktopDestination.HISTORY -> DesktopHistoryPage(
                             // The account's history when there is one, and what
@@ -6474,7 +6520,8 @@ private fun DesktopCollectionPage(
     // Null while unknown and for anything that cannot be saved: your own playlists, the auto
     // playlists, and every page when signed out. The button is only there when it can work.
     val canSave = (collection.type == BrowseType.ALBUM || collection.type == BrowseType.PLAYLIST) &&
-        collection.owned != true
+        collection.owned != true &&
+        DesktopNavidromeSource.parseAlbum(collection.browseId) == null
     var library by remember(collection.browseId) { mutableStateOf<LibraryState?>(null) }
     val libraryScope = rememberCoroutineScope()
     LaunchedEffect(collection.browseId, canSave) {
