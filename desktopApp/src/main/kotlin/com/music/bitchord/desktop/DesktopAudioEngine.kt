@@ -475,7 +475,9 @@ class DesktopPlaybackEngine(
         }
         nextResolveJob?.cancel()
         clearUpcoming()
-        if (song == null || transitionSecondsFor(song) == 0) return
+        // Read ahead even with no blend configured: the track still has to be open when this one
+        // ends, or the hand-over waits on a resolve and the album is not gapless.
+        if (song == null) return
         nextSong = song
         // A download plays from its file, here as in [loadInternal] — never from whichever source
         // would have answered for it.
@@ -1046,8 +1048,17 @@ class DesktopPlaybackEngine(
         // audio, which only a manual seek could put right.
         // Less what is still queued in the sink: [playhead] restarts from the played-frame count
         // here, so the queued audio — this track's — is counted again as it plays out.
-        val handoverUs = incoming.startUs + incomingElapsedUs() - queuedSourceUs(deckRate(incoming))
-        resetPlayhead(incoming, handoverUs)
+        val handoverUs = if (plan == null) incoming.startUs else {
+            incoming.startUs + incomingElapsedUs() - queuedSourceUs(deckRate(incoming))
+        }
+        if (plan == null) {
+            // No blend: the queue still holds the outgoing track's tail, so the incoming one is
+            // at its start only once that has played out — a jump recorded at the next frame
+            // written, not a reset to the frame being heard now.
+            playhead.jump(framesWritten, incoming.startUs, usPerFrame(incoming))
+        } else {
+            resetPlayhead(incoming, handoverUs)
+        }
         DesktopTrackLog.log(
             "transition complete: '${incoming.song.title}' resumes at " +
                 "${"%.1f".format(handoverUs / 1_000_000.0)}s " +
