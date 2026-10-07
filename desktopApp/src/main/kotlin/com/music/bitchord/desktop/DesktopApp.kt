@@ -668,6 +668,8 @@ fun BitChordDesktopApp() {
     }
     var playbackSpeed by remember { mutableStateOf(persistence.string("playback_speed", "1.0").toFloatOrNull() ?: 1.0f) }
     var volume by remember { mutableStateOf(persistence.string("volume", "1.0").toFloatOrNull()?.coerceIn(0.0f, 1.0f) ?: 1.0f) }
+    // The level a mute came from, so the same key can bring it back.
+    var volumeBeforeMute by remember { mutableStateOf<Float?>(null) }
     var crossfadeSeconds by remember { mutableStateOf(persistence.string("crossfade_seconds", "0").toIntOrNull()?.coerceIn(0, 12) ?: 0) }
     var downloadQuality by remember { mutableStateOf(persistence.string("download_quality", "LOSSLESS")) }
     var trayIconEnabled by remember { mutableStateOf(persistence.boolean("tray_icon", true)) }
@@ -2914,6 +2916,77 @@ fun BitChordDesktopApp() {
         partySyncHolder[0]?.onLocalIntent()
     }
 
+    fun setVolumeFromKeys(level: Float) {
+        volume = level.coerceIn(0.0f, 1.0f)
+        persistence.saveString("volume", volume.toString())
+        if (volume > 0f) volumeBeforeMute = null
+    }
+
+    // The rest of the whole-window keys — see [DesktopGlobalKeys]. Refreshed on every composition
+    // so they see the current track, and each answers false when it has nothing to act on so the
+    // key falls through to whatever has the focus.
+    SideEffect {
+        DesktopGlobalKeys.seekBy = { deltaMs ->
+            if (selectedSong != null && !DesktopListenTogether.state.value.controlsLocked) {
+                // The engine's own reading, not this composition's: a held key seeks again before
+                // the page has redrawn with where the last one landed.
+                seekPlayer(playbackEngine.state.value.positionMs + deltaMs)
+                true
+            } else {
+                false
+            }
+        }
+        DesktopGlobalKeys.skipPrevious = {
+            if (selectedSong != null) {
+                playPrevious()
+                true
+            } else {
+                false
+            }
+        }
+        DesktopGlobalKeys.skipNext = {
+            if (selectedSong != null) {
+                playNext()
+                true
+            } else {
+                false
+            }
+        }
+        DesktopGlobalKeys.stepVolume = { delta ->
+            setVolumeFromKeys(volume + delta)
+            true
+        }
+        DesktopGlobalKeys.toggleMute = {
+            if (volume > 0f) {
+                val level = volume
+                setVolumeFromKeys(0f)
+                volumeBeforeMute = level
+            } else {
+                setVolumeFromKeys(volumeBeforeMute ?: 1.0f)
+            }
+            true
+        }
+        DesktopGlobalKeys.focusSearch = {
+            searchFocusRequested = true
+            true
+        }
+        DesktopGlobalKeys.showShortcuts = {
+            overlays.shortcuts = true
+            true
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            DesktopGlobalKeys.seekBy = null
+            DesktopGlobalKeys.skipPrevious = null
+            DesktopGlobalKeys.skipNext = null
+            DesktopGlobalKeys.stepVolume = null
+            DesktopGlobalKeys.toggleMute = null
+            DesktopGlobalKeys.focusSearch = null
+            DesktopGlobalKeys.showShortcuts = null
+        }
+    }
+
     MaterialTheme(
         colorScheme = desktopColorScheme(),
         typography = desktopTypography(),
@@ -3401,6 +3474,9 @@ fun BitChordDesktopApp() {
                             autoplayEnabled = autoplay,
                             onDismiss = { overlays.listenTogether = false },
                         )
+                    }
+                    if (overlays.shortcuts) {
+                        DesktopShortcutsDialog(onDismiss = { overlays.shortcuts = false })
                     }
                     if (overlays.audioOutput) {
                         DesktopAudioOutputDialog(onDismiss = { overlays.audioOutput = false })

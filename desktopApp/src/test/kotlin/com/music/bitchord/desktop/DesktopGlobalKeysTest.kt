@@ -19,7 +19,73 @@ class DesktopGlobalKeysTest {
         alt: Boolean = false,
         meta: Boolean = false,
         typing: Boolean = false,
-    ) = DesktopGlobalKeys.actionFor(key, ctrl, alt, meta, typing)
+        shift: Boolean = false,
+    ) = DesktopGlobalKeys.actionFor(key, ctrl, alt, meta, typing, shift)
+
+    @Test
+    fun `arrows seek, and shift seeks further`() {
+        assertEquals(DesktopGlobalAction.SEEK_BACK, action(KeyEvent.VK_LEFT))
+        assertEquals(DesktopGlobalAction.SEEK_FORWARD, action(KeyEvent.VK_RIGHT))
+        assertEquals(DesktopGlobalAction.SEEK_BACK_LONG, action(KeyEvent.VK_LEFT, shift = true))
+        assertEquals(DesktopGlobalAction.SEEK_FORWARD_LONG, action(KeyEvent.VK_RIGHT, shift = true))
+    }
+
+    @Test
+    fun `ctrl with left or right skips`() {
+        assertEquals(DesktopGlobalAction.PREVIOUS, action(KeyEvent.VK_LEFT, ctrl = true))
+        assertEquals(DesktopGlobalAction.NEXT, action(KeyEvent.VK_RIGHT, ctrl = true))
+    }
+
+    @Test
+    fun `up and down change the volume, m mutes`() {
+        assertEquals(DesktopGlobalAction.VOLUME_UP, action(KeyEvent.VK_UP))
+        assertEquals(DesktopGlobalAction.VOLUME_DOWN, action(KeyEvent.VK_DOWN))
+        assertEquals(DesktopGlobalAction.MUTE, action(KeyEvent.VK_M))
+    }
+
+    @Test
+    fun `slash focuses search and question mark shows the shortcuts`() {
+        assertEquals(DesktopGlobalAction.FOCUS_SEARCH, action(KeyEvent.VK_SLASH))
+        assertEquals(DesktopGlobalAction.SHOW_SHORTCUTS, action(KeyEvent.VK_SLASH, shift = true))
+        assertEquals(DesktopGlobalAction.FOCUS_SEARCH, action(KeyEvent.VK_K, ctrl = true))
+    }
+
+    @Test
+    fun `plain keys are left to a text box, and so are ctrl arrows`() {
+        listOf(
+            KeyEvent.VK_LEFT, KeyEvent.VK_RIGHT, KeyEvent.VK_UP, KeyEvent.VK_DOWN,
+            KeyEvent.VK_M, KeyEvent.VK_SLASH,
+        ).forEach {
+            assertNull(action(it, typing = true))
+            assertNull(action(it, typing = true, shift = true))
+        }
+        assertNull(action(KeyEvent.VK_LEFT, ctrl = true, typing = true))
+        assertNull(action(KeyEvent.VK_RIGHT, ctrl = true, typing = true))
+    }
+
+    @Test
+    fun `ctrl k reaches search from inside a text box`() {
+        assertEquals(DesktopGlobalAction.FOCUS_SEARCH, action(KeyEvent.VK_K, ctrl = true, typing = true))
+    }
+
+    @Test
+    fun `alt and meta leave the new keys alone`() {
+        assertNull(action(KeyEvent.VK_LEFT, alt = true))
+        assertNull(action(KeyEvent.VK_M, meta = true))
+    }
+
+    @Test
+    fun `only seeking and volume repeat while held`() {
+        val repeating = DesktopGlobalAction.entries.filter { it.repeats }.toSet()
+        assertEquals(
+            setOf(
+                DesktopGlobalAction.SEEK_BACK, DesktopGlobalAction.SEEK_FORWARD,
+                DesktopGlobalAction.SEEK_BACK_LONG, DesktopGlobalAction.SEEK_FORWARD_LONG,
+                DesktopGlobalAction.VOLUME_UP, DesktopGlobalAction.VOLUME_DOWN,
+            ),
+            repeating,
+        )
+    }
 
     @Test
     fun `space plays and pauses`() {
