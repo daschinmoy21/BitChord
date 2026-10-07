@@ -1,6 +1,11 @@
 package com.music.bitchord.desktop
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import com.music.bitchord.ui.player.PlayerPlatform
 import com.music.bitchord.data.DebugLog
 import com.music.bitchord.data.TrackLog
@@ -157,7 +162,10 @@ private fun desktopMain() = application {
             LocalDesktopWindowScope provides this,
             LocalDensity provides Density(density.density * uiScale, density.fontScale),
         ) {
-            BitChordDesktopApp()
+            Box(Modifier.fillMaxSize()) {
+                BitChordDesktopApp()
+                DesktopZoomIndicator(Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
+            }
         }
     }
 }

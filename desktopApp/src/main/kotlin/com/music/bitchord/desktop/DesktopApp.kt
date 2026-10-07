@@ -178,6 +178,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -5814,6 +5815,7 @@ private fun DesktopSettingsScreen(
             }
             if (section == DesktopSettingsSection.APPEARANCE) item {
                 SettingsGroup(DesktopStrings["appearance", "Appearance"]) {
+                    DesktopZoomSetting()
                     val reduceDynamicBlur by DesktopAppearanceSettings.reduceDynamicBlur.collectAsState()
                     SettingsToggle(
                         DesktopStrings["reduce_dynamic_blur", "Reduce dynamic blur"],
@@ -7488,6 +7490,44 @@ internal fun DesktopBareSlider(
         },
         modifier = modifier,
     )
+}
+
+/**
+ * The interface zoom as a slider over [DesktopUiScale.STEPS], with its percentage and a reset.
+ *
+ * It drives the same state as Ctrl and plus, minus or zero, so the two stay in step.
+ */
+@Composable
+private fun DesktopZoomSetting() {
+    val title = DesktopStrings["d_interface_zoom", "Interface zoom"]
+    val subtitle = DesktopStrings[
+        "d_interface_zoom_subtitle",
+        "Ctrl and plus, minus or zero change it too",
+    ]
+    if (!settingsRowVisible(title, subtitle)) return
+    val scale by DesktopUiScale.scale.collectAsState()
+    val steps = DesktopUiScale.STEPS
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(subtitle, color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.width(6.dp))
+            TextButton(onClick = { DesktopUiScale.select(1f) }, enabled = scale != 1f) {
+                Text(DesktopStrings["d_reset_zoom", "Reset"])
+            }
+        }
+        DesktopBareSlider(
+            value = steps.indexOf(scale).toFloat(),
+            onValueChange = { DesktopUiScale.select(steps[it.roundToInt()]) },
+            valueRange = 0f..steps.lastIndex.toFloat(),
+            // Every step between the two ends is a tick the thumb snaps to.
+            steps = steps.size - 2,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @Composable
