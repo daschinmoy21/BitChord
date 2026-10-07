@@ -1,6 +1,8 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.lyrics.LyricsSource
+import com.music.bitchord.data.model.PlaybackSourceType
+import com.music.bitchord.data.model.QueueTier
 import com.music.bitchord.data.model.Song
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -71,7 +73,20 @@ class DesktopPersistence {
 
     fun queue(): List<Song> = readSongs(KEY_QUEUE)
 
-    fun saveQueue(songs: List<Song>) = writeSongs(KEY_QUEUE, songs.take(MAX_QUEUE))
+    fun saveQueue(songs: List<Song>) = writeSongs(KEY_QUEUE, songs.take(MAX_QUEUE), queueFields = true)
+
+    /**
+     * Where the last session stopped in [videoId], or zero when what was saved is for another
+     * track or cannot be read: a stale or damaged value is simply not a position.
+     */
+    fun savedPosition(videoId: String): Long {
+        val parts = string(KEY_POSITION, "").split('|', limit = 2)
+        if (parts.size != 2 || decode(parts[0]) != videoId) return 0L
+        return parts[1].toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    }
+
+    fun savePosition(videoId: String, positionMs: Long) =
+        saveString(KEY_POSITION, "${encode(videoId)}|${positionMs.coerceAtLeast(0L)}")
 
     /** Tracks pinned to YouTube's own upload — see [DesktopOriginalVersion]. */
     internal fun originalVersionIds(): Set<String> = readLines(KEY_ORIGINAL_VERSIONS).toSet()
@@ -220,8 +235,13 @@ class DesktopPersistence {
 
     private fun readSongs(key: String): List<Song> = readLines(key).mapNotNull(::decodeSong)
 
-    private fun writeSongs(key: String, songs: List<Song>) =
-        writeLines(key, songs.map(::encodeSong))
+    /**
+     * [queueFields] keeps a row's place in the queue — its section, entry and source. Only the
+     * queue itself wants those back; a history or download row carrying them would bring a stale
+     * entry id into whatever queue it is next played from.
+     */
+    private fun writeSongs(key: String, songs: List<Song>, queueFields: Boolean = false) =
+        writeLines(key, songs.map { encodeSong(it, queueFields) })
 
     private fun readLines(key: String): List<String> =
         DesktopPreferenceChunks.read(preferences, key).orEmpty()
@@ -231,7 +251,7 @@ class DesktopPersistence {
     private fun writeLines(key: String, lines: List<String>) =
         DesktopPreferenceChunks.write(preferences, key, lines.joinToString("\n"))
 
-    private fun encodeSong(song: Song): String = listOf(
+    private fun encodeSong(song: Song, queueFields: Boolean): String = listOfNotNull(
         song.videoId,
         song.title,
         song.artist,
@@ -250,6 +270,12 @@ class DesktopPersistence {
         song.localDateModifiedSeconds?.toString().orEmpty(),
         song.sourceQuality.orEmpty(),
         song.isExplicit?.toString().orEmpty(),
+        song.queueTier.name.takeIf { queueFields },
+        song.queueEntryId.orEmpty().takeIf { queueFields },
+        song.radioName.orEmpty().takeIf { queueFields },
+        song.playbackSource.orEmpty().takeIf { queueFields },
+        song.playbackSourceType?.name.orEmpty().takeIf { queueFields },
+        song.playbackSourceId.orEmpty().takeIf { queueFields },
     ).joinToString(DELIMITER, transform = ::encode)
 
     private fun decodeSong(value: String): Song? {
@@ -275,7 +301,20 @@ class DesktopPersistence {
             localDateModifiedSeconds = fields.getOrNull(15)?.toLongOrNull(),
             sourceQuality = fields.getOrNull(16)?.ifBlank { null },
             isExplicit = fields.getOrNull(17)?.toBooleanStrictOrNull(),
-        )
+        ).let { song ->
+            // Rows saved before the queue kept its sections end at field 17 and keep whatever
+            // [Song.fromAutoplay] said above.
+            val tier = fields.getOrNull(18)?.let { name -> QueueTier.entries.firstOrNull { it.name == name } }
+            song.copy(
+                queueTier = tier ?: song.queueTier,
+                queueEntryId = fields.getOrNull(19)?.ifBlank { null },
+                radioName = fields.getOrNull(20)?.ifBlank { null },
+                playbackSource = fields.getOrNull(21)?.ifBlank { null },
+                playbackSourceType = fields.getOrNull(22)
+                    ?.let { name -> PlaybackSourceType.entries.firstOrNull { it.name == name } },
+                playbackSourceId = fields.getOrNull(23)?.ifBlank { null },
+            )
+        }
     }
 
     private fun decodePlaylist(value: String): DesktopPlaylist? {
@@ -298,6 +337,7 @@ class DesktopPersistence {
         const val KEY_DISLIKED_IDS = "disliked_ids"
         const val KEY_HISTORY = "history"
         const val KEY_QUEUE = "queue"
+        const val KEY_POSITION = "queue_position"
         const val KEY_DOWNLOADS = "downloads"
         const val KEY_PLAYLISTS = "playlists"
         const val KEY_MODULE_INDEX_URL = "module_index_url"

@@ -1761,6 +1761,30 @@ fun BitChordDesktopApp() {
     }
     val playback by playbackEngine.state.collectAsState()
 
+    // The last session's song, back on the player where it was left and paused. The queue itself
+    // was read back when [liveQueue] was made; this is only the current track, which is opened on
+    // the first press of play and not before.
+    LaunchedEffect(Unit) {
+        if (selectedSong != null || DesktopListenTogether.state.value.inParty) return@LaunchedEffect
+        val song = liveQueue.current ?: return@LaunchedEffect
+        selectedSong = song
+        playbackEngine.restorePaused(song, persistence.savedPosition(song.videoId))
+    }
+    // Where the track is, kept for the next launch: every few seconds while it plays, and the
+    // moment it stops, so a pause or a quit loses at most a few seconds.
+    LaunchedEffect(playbackEngine) {
+        var lastSavedAt = 0L
+        playbackEngine.state.collect { now ->
+            val song = now.song ?: return@collect
+            if (DesktopListenTogether.state.value.inParty || now.isLoading || now.error != null) return@collect
+            val clock = System.nanoTime()
+            if (!now.isPlaying || clock - lastSavedAt >= POSITION_SAVE_INTERVAL_NANOS) {
+                lastSavedAt = clock
+                persistence.savePosition(song.videoId, now.positionMs)
+            }
+        }
+    }
+
     // The shared player reads the playhead off this one object, and only where it
     // draws it — see PlaybackPosition — so a tick never recomposes the player.
     val playerPosition = remember { PlaybackPosition() }
@@ -4851,6 +4875,9 @@ private fun DesktopPageBackdrop(artworkUrl: String?, transparentBase: Boolean) {
 /** What the mesh is averaged from — coarse by design. */
 /** Whether AutoPlay may offer a song this session has already played or suggested. */
 internal const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
+
+/** How often the playing position is written down for the next launch. */
+private const val POSITION_SAVE_INTERVAL_NANOS = 5_000_000_000L
 
 internal const val KEY_LIBRARY_SORT = "library_sort"
 
