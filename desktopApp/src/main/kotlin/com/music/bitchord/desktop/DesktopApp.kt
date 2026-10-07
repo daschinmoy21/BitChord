@@ -272,6 +272,7 @@ import bitchord.desktopapp.generated.resources.sf_pro_display_medium
 import bitchord.desktopapp.generated.resources.sf_pro_display_regular
 import bitchord.desktopapp.generated.resources.sf_pro_display_semibold
 import com.music.bitchord.data.model.ArtistPage
+import com.music.bitchord.data.model.ArtistRef
 import com.music.bitchord.data.model.BrowseItem
 import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.CARD_ART_PX
@@ -296,6 +297,7 @@ import com.music.bitchord.data.model.UserPlaylist
 import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.isSameTrackAs
+import com.music.bitchord.data.model.normalizedArtistName
 import com.music.bitchord.data.model.withoutRepeatsOf
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.data.settings.LastPlayerScreen
@@ -2012,6 +2014,21 @@ fun BitChordDesktopApp() {
         }
     }
 
+    /**
+     * A name in a credit line: opens the channel when the line says which one, and otherwise
+     * finds the page from the exact name, opening nothing when that name is not an artist's own.
+     */
+    fun openArtistCredit(browseId: String?, name: String) {
+        if (browseId != null) {
+            openArtist(browseId, name)
+            return
+        }
+        scope.launch {
+            YtMusicRepository.findArtistPageId(name).getOrNull()
+                ?.let { found -> openArtist(found, name) }
+        }
+    }
+
     LaunchedEffect(openedArtist, artistReloads) {
         val target = openedArtist ?: return@LaunchedEffect
         if (artistState !is UiState.Loading) return@LaunchedEffect
@@ -3189,14 +3206,7 @@ fun BitChordDesktopApp() {
                             // rather than White 2115.
                             onOpenArtist = { id, name ->
                                 overlays.nowPlaying = false
-                                if (id != null) {
-                                    openArtist(id, name)
-                                } else {
-                                    scope.launch {
-                                        YtMusicRepository.findArtistPageId(name).getOrNull()
-                                            ?.let { found -> openArtist(found, name) }
-                                    }
-                                }
+                                openArtistCredit(id, name)
                             },
                             onOpenPlaybackSource = {
                                 val id = playerSong.playbackSourceId
@@ -3760,6 +3770,7 @@ fun BitChordDesktopApp() {
                             onDelete = { overlays.delete = true }.takeIf { openedCollection?.owned == true },
                             onRemoveFromPlaylist = ::removeFromOpenPlaylist
                                 .takeIf { openedCollection?.owned == true },
+                            onOpenArtist = ::openArtistCredit,
                             likedIds = likedIds,
                             onPlaySongs = { songs, index ->
                                 playSongs(songs, index, openedCollection?.let { collectionSource(it) })
@@ -6489,6 +6500,8 @@ private fun DesktopCollectionPage(
     /** Copies the release's own YouTube Music link; null for anything with no link to share. */
     onShare: (() -> Unit)?,
     onRemoveFromPlaylist: ((Song) -> Unit)?,
+    /** Opens the credit under the title; a null id means the page is found from the name. */
+    onOpenArtist: (browseId: String?, name: String) -> Unit,
     likedIds: Set<String>,
     onPlaySongs: (List<Song>, Int) -> Unit,
     onShuffle: (List<Song>) -> Unit,
@@ -6556,6 +6569,15 @@ private fun DesktopCollectionPage(
             !it.matches(Regex("\\d{1,2}:\\d{2}(?::\\d{2})?")) &&
             !it.matches(Regex("[0-9,.]+\\s*(?:songs?|tracks?)", RegexOption.IGNORE_CASE))
     }.orEmpty()
+    // The header's credit carries no channel of its own, so the tracks are where one is found: a
+    // track that names this artist, as its lead or among its credits, states the channel to open.
+    val creditBrowseId = remember(songs, credit) {
+        val wanted = normalizedArtistName(credit)
+        songs.asSequence()
+            .flatMap { song -> song.artists.asSequence() + sequenceOf(ArtistRef(song.artist, song.artistId)) }
+            .firstOrNull { it.browseId != null && normalizedArtistName(it.name) == wanted }
+            ?.browseId
+    }
     val typeLabel = when (collection.type) {
         BrowseType.ALBUM -> "Album"
         BrowseType.PLAYLIST -> "Playlist"
@@ -6629,6 +6651,13 @@ private fun DesktopCollectionPage(
                             Spacer(Modifier.height(6.dp))
                             Text(
                                 credit,
+                                // Only an album's credit is an artist; a playlist's is its owner, who
+                                // has no artist page to open.
+                                modifier = if (collection.type == BrowseType.ALBUM) {
+                                    Modifier.clickable { onOpenArtist(creditBrowseId, credit) }
+                                } else {
+                                    Modifier
+                                },
                                 color = DesktopAccent,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
