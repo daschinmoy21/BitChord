@@ -1,0 +1,83 @@
+name: Build Android APK
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
+    secrets:
+      LASTFM_API_KEY:
+        required: false
+      LASTFM_SECRET:
+        required: false
+      KEYSTORE_BASE64:
+        required: false
+      KEYSTORE_PASSWORD:
+        required: false
+      KEY_ALIAS:
+        required: false
+      KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    env:
+      LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+      LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Tests
+        run: ./gradlew :app:testDevDebugUnitTest
+      - name: Configure signing
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: python3 .github/scripts/prepare_android_signing.py
+      - name: Build APK
+        env:
+          VARIANT: ${{ steps.signing.outputs.variant }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=()
+          [ -z "$VERSION" ] || args+=("-Pbitchord.version=$VERSION")
+          ./gradlew ":app:assemble$VARIANT" "${args[@]}"
+      - name: Collect universal APK
+        env:
+          VARIANT: ${{ steps.signing.outputs.variant }}
+        run: |
+          mkdir -p dist
+          if [ "$VARIANT" = ProdRelease ]; then
+            cp app/build/outputs/apk/prod/release/*universal*.apk dist/BitChord-android.apk
+          else
+            cp app/build/outputs/apk/dev/debug/*universal*.apk dist/BitChord-android-dev.apk
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: dist/*.apk
+          if-no-files-found: error
+      - name: Remove signing material
+        if: always()
+        run: rm -f bitchord-release.jks keystore.properties
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-test-reports
+          path: app/build/reports/tests/

@@ -111,6 +111,8 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Write local.properties
