@@ -50,8 +50,8 @@ internal fun blendElapsedUs(samples: Long, channels: Int, sampleRate: Int): Long
 class DesktopPlaybackEngine(
     private val onEnded: () -> Unit,
     private val onCrossfaded: (Song) -> Unit = {},
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(DesktopPlaybackState())
     val state: StateFlow<DesktopPlaybackState> = _state.asStateFlow()
 
@@ -188,7 +188,28 @@ class DesktopPlaybackEngine(
 
     // ---- the surface the application uses -------------------------------
 
+    /**
+     * A track put on the player paused, without opening it: the last session's song, shown at the
+     * place it was left. Nothing is resolved until the listener presses play, so a start-up costs
+     * no network and a session nobody resumes never touches the stream at all.
+     */
+    @Volatile private var restored: Pair<Song, Long>? = null
+
+    fun restorePaused(song: Song, positionMs: Long) {
+        val at = positionMs.coerceAtLeast(0L)
+        restored = song to at
+        paused = true
+        _state.value = DesktopPlaybackState(
+            song = song,
+            volume = volume,
+            positionMs = at,
+            positionSampledAtNanos = System.nanoTime(),
+            durationMs = (song.durationText.durationSeconds() * 1_000).toLong(),
+        )
+    }
+
     fun load(song: Song, playWhenReady: Boolean = true, startAtMs: Long = 0L) {
+        restored = null
         retryingSongId = null
         loadInternal(
             song,
@@ -220,7 +241,7 @@ class DesktopPlaybackEngine(
         commands += Command.Flush
         searchingBetterFor = null
         incomingSearchingFor = null
-        _state.value = DesktopPlaybackState(song = song, volume = volume, isLoading = true)
+        _state.value = DesktopPlaybackState(song = song, volume = volume, isLoading = true, positionMs = startAtMs.coerceAtLeast(0L))
         resolveJob = scope.launch {
             // Only when the file is really there: a download record can outlive the file it names,
             // and handing the decoder a path that is not there fails as "could not open stream"
@@ -432,6 +453,10 @@ class DesktopPlaybackEngine(
     }
 
     fun play() {
+        restored?.let { (song, at) ->
+            load(song, playWhenReady = true, startAtMs = at)
+            return
+        }
         paused = false
         _state.update { it.copy(isPlaying = true) }
     }
@@ -442,6 +467,11 @@ class DesktopPlaybackEngine(
     }
 
     fun seekTo(positionMs: Long) {
+        restored?.let { (song, _) ->
+            // Nothing is open to seek in; play will open the track where this lands.
+            restorePaused(song, positionMs)
+            return
+        }
         // TEMP seek diagnostics: who asked, so a seek undone by a second one shows up.
         DesktopTrackLog.log(
             "seek requested: ${positionMs}ms (at ${_state.value.positionMs}ms) from " +
