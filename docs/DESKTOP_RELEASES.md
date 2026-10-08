@@ -1,107 +1,111 @@
-# Desktop releases and the update check
+# Fork releases and the desktop update check
 
-How a desktop build gets its version, how its files are named on the releases page, and how the
-app finds out a newer one exists. Windows already follows all of this; every Linux variant
-(AppImage, deb, rpm, and anything added later) has to follow the same protocol. If a Linux file
-breaks one of the rules below, the update check silently stops working for Linux users.
+This fork is maintained for @daschinmoy21's NixOS/niri desktop. Builds and update checks use
+[daschinmoy21/BitChord releases](https://github.com/daschinmoy21/BitChord/releases).
+Selected fixes and UX improvements may be contributed to
+[upstream BitChord](https://github.com/kushagrasinghx/BitChord) later.
 
-## 1. One version, stamped from one place
+## Rolling builds
 
-- The version is a plain string such as `1.8` or `1.8-beta1`. No leading `v`.
-- `desktopApp/build.gradle.kts` reads it from `-Pbitchord.version=...` and falls back to a default
-  (`appVersion`). CI passes the tag with the `v` removed (`v1.8` becomes `1.8`).
-- The app reads the same value at runtime from the `bitchord.version` system property. It is baked
-  into every package by `jvmArgs("-Dbitchord.version=$appVersion")` in the `compose.desktop`
-  block of `desktopApp/build.gradle.kts`, which covers exe, msi, deb, rpm and the AppImage (it
-  wraps the same app image, so `appimage.sh` needs nothing). Do not remove that line, and do not
-  add a separate launcher that skips it: the app would then report the hardcoded fallback and the
-  update check would compare against the wrong version.
-- A pre-release version carries a suffix after a dash: `1.8-beta1`. The update check treats
-  `1.8-beta1` as older than `1.8`, and `1.8` as older than `1.9`.
+[`.github/workflows/fork-appimage.yml`](../.github/workflows/fork-appimage.yml) builds a Linux
+AppImage and a universal Android APK on branch pushes, except changes covered by its
+`paths-ignore` filters. It publishes only after both builds succeed.
 
-## 2. The installer's own version is numeric
+- `main` publishes the rolling prerelease [`build-main`](https://github.com/daschinmoy21/BitChord/releases/tag/build-main).
+- Other branches use `build-<branch>`, with `/` replaced by `-`.
+- The Linux asset is `BitChord-linux-x86_64.AppImage`.
+- The Android asset is currently `BitChord-android-dev.apk`, the separate BitChord Dev app
+  (`com.dev.bitchord`). The fork has no production signing secrets configured.
+- Both apps receive `1.8-fork.<run_number>` as their version name. The release notes identify
+  the source commit. The rolling tag and assets are replaced by each successful build.
 
-Installer formats reject `-beta1`, so `nativePackageVersion` in `desktopApp/build.gradle.kts`
-builds a separate numeric one: `major.minor.desktopVersionCode`, for example `1.8.26`.
+Rolling tags such as `build-main` do not encode a version. The desktop updater ignores them;
+download these builds from the release page. For NixOS AppImage instructions, see
+[DESKTOP.md](../DESKTOP.md).
 
-- Bump `desktopVersionCode` for **every** build you publish, betas included. Windows only
-  upgrades in place when the numeric version goes up; the same number is treated as "already
-  installed".
-- deb and rpm take the same `nativePackageVersion`, so `apt`/`dnf` upgrade ordering works the same
-  way. Do not hand-edit package versions anywhere else.
-- Never change the Windows `upgradeUuid`. For Linux, never rename the package (`packageName =
-  "BitChord"`) or the upgrade path breaks.
+## Versioned releases
 
-## 3. File names on the releases page
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) builds Linux, Windows, and
+Android artifacts. A matching tag push (`v*.*.*`, for example `v1.8.0`) creates a **draft**
+release containing all three platforms. Review the assets and publish the draft when ready.
+A manual run accepts a version and uploads build artifacts; running it from a branch does not
+create a release because the publishing step requires a tag ref.
 
-The release workflow (`.github/workflows/release.yml`) renames build output to these exact
-patterns, where `<v>` is the version from section 1:
+The shared Android build is
+[`.github/workflows/android-build.yml`](../.github/workflows/android-build.yml). Without signing
+secrets it produces the installable dev APK. All four production signing secrets together
+select a signed production APK; incomplete signing configuration fails rather than publishing
+an unsigned production APK. Dev APKs use Android debug signing and are testing builds.
+
+### Application versions
+
+- Desktop reads `-Pbitchord.version=...` in `desktopApp/build.gradle.kts`. Packaged launchers pass
+  the same string through the `bitchord.version` JVM property.
+- Android reads the same Gradle property for `versionName`, stripping an optional leading `v`.
+  Android's numeric `versionCode` is maintained separately in `app/build.gradle.kts`.
+- Supported desktop update versions are numeric versions such as `1.8`, beta versions such as
+  `1.8-beta1`, and fork versions such as `1.8-fork.10`, with an optional leading `v` in release tags.
+- At the same numeric version, beta builds sort before the plain release, and fork builds after it.
+  Build numbers compare numerically: `1.8-fork.10` is newer than `1.8-fork.9`.
+
+### Installer versions
+
+Desktop installers require a numeric version. `nativePackageVersion` combines the major/minor
+version with `desktopVersionCode`, for example `1.8.26`.
+
+Bump `desktopVersionCode` before publishing a versioned installer intended to upgrade a previous
+one, including betas. Windows and package managers use that number for upgrade ordering.
+Keep the Windows `upgradeUuid` and the Linux package name stable.
+
+### Versioned asset names
+
+The release workflow renames desktop artifacts to these patterns, where `<v>` is the stamped
+application version:
 
 | Platform | File |
 |---|---|
-| Windows | `BitChord-<v>-windows-x64-setup.exe` (what the update check downloads) |
+| Linux | `BitChord-<v>-linux-x86_64.AppImage` |
+| Linux | `BitChord-<v>-linux-amd64.deb` |
+| Linux | `BitChord-<v>-linux-x86_64.rpm` |
+| Windows | `BitChord-<v>-windows-x64-setup.exe` |
 | Windows | `BitChord-<v>-windows-x64.msi` |
 | Windows | `BitChord-<v>-windows-x64-portable.zip` |
-| Linux | `BitChord-<v>-linux-x86_64.AppImage` (preferred by the update check) |
-| Linux | `BitChord-<v>-linux-amd64.deb` (used if there is no AppImage) |
-| Linux | `BitChord-<v>-linux-x86_64.rpm` |
+| Android | `BitChord-android-dev.apk` (current dev builds) |
+| Android | `BitChord-android.apk` (when production signing is configured) |
 
-Rules:
+Keep the desktop platform suffixes stable. `installerUrl()` selects `.AppImage`, then
+`-linux-amd64.deb` on Linux, and `-windows-x64-setup.exe` on Windows. A new format or architecture
+needs a corresponding selection rule; the current release jobs target x86_64 desktops.
 
-- Keep the platform tail exactly as above. The update check matches on the ending
-  (`.AppImage`, then `-linux-amd64.deb` on Linux; `-windows-x64-setup.exe` on Windows), not on the
-  version, so a rename here silently breaks it.
-- A new Linux variant (arm64, Flatpak, tar.gz) gets its own tail and is **added to
-  `installerUrl()` in `DesktopUpdateChecker.kt`**. Pick by architecture; today the check assumes
-  x86_64.
-- Upload files to the release, do not rely on the generated source archives.
+## How desktop updates work
 
-## 4. How the app finds an update
+[`DesktopUpdateChecker.kt`](../desktopApp/src/main/kotlin/com/music/bitchord/desktop/DesktopUpdateChecker.kt)
+checks once per launch:
 
-`desktopApp/src/main/kotlin/com/music/bitchord/desktop/DesktopUpdateChecker.kt`, shown as a dialog
-from `BitChordDesktopApp` in `DesktopApp.kt`:
+1. Fetch `https://api.github.com/repos/daschinmoy21/BitChord/releases?per_page=100`.
+2. Ignore drafts and tags that are not supported versions, including rolling `build-*` tags.
+3. Choose the highest supported version and compare it with the running `bitchord.version`.
+   Versioned prereleases are eligible too; GitHub's `latest` endpoint is not used.
+4. Offer the matching desktop asset when newer. Download opens it in the browser; if no asset
+   matches, it opens the release page. Installation remains manual.
 
-1. At launch it calls `GET https://api.github.com/repos/kushagrasinghx/BitChord/releases/latest`.
-2. It strips the `v` from `tag_name` and compares it with `bitchord.version` (numeric, dot by dot;
-   a `-beta` current version is older than the same release).
-3. If newer, it picks the asset for the running OS and shows "Update available" with Download and
-   Later. Download opens the asset URL in the browser. If no asset matches it opens the release
-   page instead. Nothing is installed automatically.
-4. Network and parse errors are swallowed. No internet means no dialog.
+Network or parsing failures produce no update prompt. Keep Linux and Windows assets on the same
+versioned release so both platforms can find their downloads. This describes the desktop checker;
+the Android APK is an additional release artifact.
 
-What this means for releasing:
+## Validating a release
 
-- GitHub's "latest" ignores **drafts and pre-releases**. A release only prompts users once it is
-  published as a normal release. Mark betas as pre-release so they never prompt anyone.
-- The git tag must be `v<version>` (`v1.8`). The workflow also accepts only `v*.*.*`; for a
-  two-part version like `v1.8` use the manual `workflow_dispatch` with `version` filled in, or
-  tag `v1.8.0` and make sure the tag and the stamped version agree.
-- Linux and Windows files must be on the **same release**, because there is only one "latest".
-  Do not publish a Windows-only release and a separate Linux-only one: whichever is newer becomes
-  "latest" and the other platform will see no asset for itself (it falls back to the release page).
+- Confirm the built desktop packages include the native analyser and ONNX models.
+- Confirm the displayed version agrees with the tag and all package names.
+- Check the Android APK installs as BitChord Dev when no production signing secrets are set.
+- For versioned installers, test an upgrade from the previous numeric package version.
+- Confirm the release has the expected platform assets before publishing its draft.
 
-## 5. Checklist for a Linux build
-
-Before publishing, confirm each of these on the built files, not just in the source:
-
-- [ ] Version stamped (`-Pbitchord.version=<v>`). Launch each built file and check Settings shows the
-      same version.
-- [ ] `desktopVersionCode` is higher than the last published build.
-- [ ] The three files are named exactly as in section 3.
-- [ ] They are attached to the same release as the Windows files.
-- [ ] The release is not a draft or pre-release (for a real release).
-- [ ] Install the previous release, then the new one over it: deb with `sudo apt install
-      ./BitChord-*.deb`, rpm with `sudo dnf upgrade ./BitChord-*.rpm`. It must upgrade, not
-      reinstall or conflict.
-- [ ] With the previous release installed, the "Update available" dialog appears and Download
-      opens the correct file for that platform.
-
-## 6. Quick manual test of the check
-
-Run an old build with the version forced low, against the real latest release:
+To try the desktop prompt against a published versioned fork release:
 
 ```bash
-./gradlew :desktopApp:run -Pbitchord.version=0.1
+nix develop --command ./gradlew :desktopApp:run -Pbitchord.version=0.1
 ```
 
-The dialog should appear. Run it with the current published version and it should not.
+If only rolling tags or drafts exist, no prompt is expected. Running with the same version as the
+newest published versioned release should also produce no prompt.

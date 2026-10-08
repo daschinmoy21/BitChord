@@ -1,6 +1,15 @@
 # Maintainers
 
-This document lists the maintainers responsible for BitChord.
+## This fork
+
+[@daschinmoy21](https://github.com/daschinmoy21) maintains this personal fork, its NixOS/niri
+setup, desktop UX changes, releases, and pull request reviews. Selected changes may be
+submitted upstream after they have settled here.
+
+## Upstream BitChord
+
+The original project is maintained separately at
+[kushagrasinghx/BitChord](https://github.com/kushagrasinghx/BitChord):
 
 | Maintainer | GitHub | Responsibilities |
 |---|---|---|
@@ -8,11 +17,11 @@ This document lists the maintainers responsible for BitChord.
 
 ## Responsibilities
 
-Maintainers oversee project direction, repository maintenance, review and merging of contributions, and release management.
+Fork issues and pull requests belong in this repository. Changes submitted upstream follow upstream’s own review and release process.
 
 ## Contributors
 
-This list is automatically generated from GitHub repository contributor data.
+This list is automatically generated from this repository’s GitHub contributor data and includes the upstream history inherited by the fork.
 
 <!-- BEGIN CONTRIBUTORS -->
 - [@kushagrasinghx](https://github.com/kushagrasinghx)

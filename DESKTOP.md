@@ -5,37 +5,75 @@ desktop application for Linux and Windows. Desktop uses the JVM target, which is
 the supported Compose Multiplatform desktop model; macOS is intentionally not a
 configured target.
 
-The desktop target uses Java 21. Run it on Linux with the JDK and native
-libraries available in the shell:
+This personal fork focuses on NixOS with niri. It keeps the shared Android and Windows
+code while improving the Linux desktop experience; selected changes are intended for upstream later.
 
-On NixOS:
+## Developing on NixOS with niri
+
+The desktop target uses Java 21. The repository's [flake.nix](flake.nix) provides the JDK,
+build tools, and native library paths for an `x86_64-linux` development shell:
+
 ```bash
-nix-shell -p jdk21 libglvnd glib gtk3 pango atk cairo cmake gdk-pixbuf libXtst libXxf86vm alsa-lib ffmpeg_6 --run '\
-  export LD_LIBRARY_PATH="$(nix eval --raw nixpkgs#libglvnd.outPath)/lib:$(nix eval --raw nixpkgs#glib.out)/lib:$(nix eval --raw nixpkgs#gtk3.outPath)/lib:$(nix eval --raw nixpkgs#pango.out)/lib:$(nix eval --raw nixpkgs#atk.outPath)/lib:$(nix eval --raw nixpkgs#cairo.outPath)/lib:$(nix eval --raw nixpkgs#gdk-pixbuf.outPath)/lib:$(nix eval --raw nixpkgs#libXtst.outPath)/lib:$(nix eval --raw nixpkgs#libXxf86vm.outPath)/lib:$(nix eval --raw nixpkgs#alsa-lib.outPath)/lib:$(nix eval --raw nixpkgs#ffmpeg_6.lib)/lib:$HOME/.openjfx/cache/21.0.6+3/amd64:/run/opengl-driver/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; \
-  bash ./gradlew :desktopApp:run
-'
+nix develop
+./gradlew :desktopApp:run
 ```
+
+Or run directly from the repository root:
+
+```bash
+nix develop --command ./gradlew :desktopApp:run
+```
+
+Run inside your niri session with XWayland available. The shell sets
+`_JAVA_AWT_WM_NONREPARENTING=1` before Java starts, so AWT passes compositor-driven window
+resizes through to the app. It also configures `LD_LIBRARY_PATH`, including
+`/run/opengl-driver/lib`, for the renderer, audio libraries, and JavaFX.
+The AppImage launcher applies the same AWT setting in a Wayland session.
+
+To validate a desktop change:
+
+```bash
+nix develop --command ./gradlew :shared:jvmTest :desktopApp:test
+nix develop --command ./gradlew :desktopApp:createDistributable
+```
+
+Desktop development does not require an Android SDK. Gradle includes the Android app module
+when an SDK is configured through `local.properties`, `ANDROID_HOME`, or `ANDROID_SDK_ROOT`.
 
 On Windows, use a Java 21 shell or install and select a Java 21 JDK before
 running `gradlew.bat :desktopApp:run`.
 
 ## Installing a release
 
-Every download on the [releases page](https://github.com/kushagrasinghx/BitChord/releases) carries its own Java
-runtime, the FFmpeg and ONNX natives, the Automix analyser and its models.
-Nothing else has to be installed first — no JDK, no codec pack.
+The fork's [rolling main release](https://github.com/daschinmoy21/BitChord/releases/tag/build-main)
+contains `BitChord-linux-x86_64.AppImage` and the universal `BitChord-android-dev.apk`.
+The APK is the separate BitChord Dev app (`com.dev.bitchord`) and can coexist with upstream.
+
+On NixOS, use an AppImage environment rather than executing the Ubuntu-built binary directly:
+
+```bash
+nix shell nixpkgs#appimage-run --command appimage-run ./BitChord-linux-x86_64.AppImage
+```
+
+The desktop packages carry their own Java runtime, FFmpeg and ONNX natives, Automix analyser,
+and models. The Nix development shell is for source builds; `appimage-run` supplies the environment
+for a downloaded AppImage. Desktop graphics/audio libraries and XWayland are still required.
+
+The versioned [release workflow](.github/workflows/release.yml) produces the following desktop formats
+alongside the APK. Check the fork's [releases page](https://github.com/daschinmoy21/BitChord/releases)
+for available assets:
 
 | Platform | Download | Notes |
 |---|---|---|
-| Linux | `BitChord-<version>-linux-x86_64.AppImage` | `chmod +x` it and run. No install, works on any distribution. |
+| Linux | `BitChord-<version>-linux-x86_64.AppImage` | `chmod +x` and run on a conventional Linux desktop; use `appimage-run` on NixOS. |
 | Linux | `BitChord-<version>-linux-amd64.deb` | `sudo apt install ./BitChord-*.deb` on Debian, Ubuntu and derivatives. |
 | Linux | `BitChord-<version>-linux-x86_64.rpm` | `sudo dnf install ./BitChord-*.rpm` on Fedora, RHEL and openSUSE. |
 | Windows | `BitChord-<version>-windows-x64-setup.exe` | The ordinary installer. Installs for the current user, so it never asks for an administrator. |
 | Windows | `BitChord-<version>-windows-x64.msi` | The same thing for anyone who deploys by MSI. |
-| Windows | `BitChord-<version>-windows-x64-portable.zip` | Unzip anywhere and run `BitChord.exe`. Writes nothing outside the folder. |
+| Windows | `BitChord-<version>-windows-x64-portable.zip` | Unzip anywhere and run `BitChord.exe`; preferences and cache use normal user directories. |
 
 The Linux packages are built on Ubuntu 22.04 against its glibc, so they install
-on that release and anything newer.
+on compatible conventional Linux distributions. On NixOS, use the AppImage through `appimage-run` or build from the Nix shell.
 
 **Linux system libraries.** The packages carry their own Java runtime and codecs
 but not the desktop's own graphics stack, and jpackage cannot derive that list —
