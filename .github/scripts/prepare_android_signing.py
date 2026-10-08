@@ -6,7 +6,7 @@ from pathlib import Path
 
 def property_value(value):
     return (value.replace("\\", "\\\\").replace("\n", "\\n")
-            .replace("\r", "\\r").replace("=", "\\=").replace(":", "\\:"))
+            .replace("\r", "\\r").replace("\t", "\\t").replace(" ", "\\ ").replace("=", "\\=").replace(":", "\\:"))
 
 
 names = ("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
@@ -17,7 +17,7 @@ if any(values) and not all(values):
 variant = "DevDebug"
 if all(values):
     store = Path("bitchord-release.jks")
-    store.write_bytes(base64.b64decode(values[0], validate=True))
+    store.write_bytes(base64.b64decode("".join(values[0].split()), validate=True))
     store.chmod(0o600)
     properties = Path("keystore.properties")
     properties.write_text("storeFile=bitchord-release.jks\n" + "\n".join(
