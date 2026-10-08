@@ -475,6 +475,7 @@ private enum class DesktopDestination(val id: String, val label: String) {
     LISTEN_NOW("listen-now", "Home"),
     EXPLORE("explore", "Explore"),
     LIBRARY("library", "Library"),
+    SPOTIFY("spotify", "Spotify"),
     SEARCH("search", "Search"),
     HISTORY("history", "History"),
     DOWNLOADS("downloads", "Downloads"),
@@ -687,6 +688,10 @@ fun BitChordDesktopApp() {
     var legacyMeshGradient by remember { mutableStateOf(persistence.boolean("legacy_mesh_gradient", false)) }
     var animatedCanvas by remember { mutableStateOf(persistence.boolean("animated_canvas", true)) }
     var spotifyCanvasCookie by remember { mutableStateOf(DesktopSpotifyToken.cookie()) }
+    var spotifyEnabled by remember { mutableStateOf(persistence.boolean(DesktopSpotify.ENABLED_KEY, false)) }
+    LaunchedEffect(spotifyEnabled, destination) {
+        if (!spotifyEnabled && destination == DesktopDestination.SPOTIFY) destination = DesktopDestination.LIBRARY
+    }
     var showNerdStats by remember { mutableStateOf(persistence.boolean("show_nerd_stats", false)) }
     var syncedLyrics by remember {
         mutableStateOf(persistence.boolean(DesktopLyricsClient.KEY_SYNCED_LYRICS, true))
@@ -706,7 +711,7 @@ fun BitChordDesktopApp() {
     var signInBusy by remember { mutableStateOf<String?>(null) }
     var signInError by remember { mutableStateOf<String?>(null) }
     var browserSignInJob by remember { mutableStateOf<Job?>(null) }
-    val interactiveSignInBrowser = remember { DesktopBrowserSignIn.preferred() }
+    val interactiveSignInBrowsers = remember { DesktopBrowserSignIn.installed() }
     val activeAccount = accounts.firstOrNull { it.accountId == activeAccountId } ?: accounts.firstOrNull()
     // The account's own library, fetched once a session is in force.
     var libraryState by remember { mutableStateOf<UiState<LibraryPage>>(UiState.Loading) }
@@ -2263,8 +2268,8 @@ fun BitChordDesktopApp() {
         overlays.settingsPage = DesktopSettingsPage.MAIN
     }
 
-    /** The Library's folder rows: the two folders this computer has. */
-    val libraryLinks = remember {
+    /** Device folders and optional Spotify library access. */
+    val libraryLinks = remember(spotifyEnabled) {
         listOf(
             LibraryLink(
                 item = ShelfItem(
@@ -2286,7 +2291,13 @@ fun BitChordDesktopApp() {
                 ),
                 icon = Icons.Rounded.Folder,
             ),
-        )
+        ) + if (spotifyEnabled) listOf(
+            LibraryLink(
+                item = ShelfItem(title = "Spotify", subtitle = "Playlists and Liked Songs",
+                    thumbnailUrl = null, videoId = null, browseId = "spotify:library"),
+                icon = Icons.Rounded.LibraryMusic,
+            ),
+        ) else emptyList()
     }
 
     /**
@@ -2310,6 +2321,7 @@ fun BitChordDesktopApp() {
     fun openLibraryItem(item: ShelfItem) {
         val browseId = item.browseId.orEmpty()
         when {
+            browseId == "spotify:library" -> selectDestination(DesktopDestination.SPOTIFY)
             browseId == LOCAL_DOWNLOADS_ID -> selectDestination(DesktopDestination.DOWNLOADS)
             browseId == LOCAL_MUSIC_ID -> selectDestination(DesktopDestination.LOCAL_MUSIC)
             browseId.startsWith(LOCAL_PLAYLIST_PREFIX) ->
@@ -3149,6 +3161,7 @@ fun BitChordDesktopApp() {
                 sidebar = {
                     DesktopSidebar(
                         destination = destination,
+                        spotifyEnabled = spotifyEnabled,
                         settingsOpen = overlays.settingsPage != null,
                         accountPlaylists = sidebarAccountPlaylists,
                         localPlaylists = playlists,
@@ -3412,7 +3425,7 @@ fun BitChordDesktopApp() {
                         DesktopSignInDialog(
                             busy = signInBusy,
                             error = signInError,
-                            interactiveBrowser = interactiveSignInBrowser,
+                            interactiveBrowsers = interactiveSignInBrowsers,
                             onBrowserSignIn = { browser ->
                                 browserSignInJob?.cancel()
                                 browserSignInJob = scope.launch {
@@ -3609,6 +3622,12 @@ fun BitChordDesktopApp() {
                                     onAnimatedCanvasChange = {
                                         animatedCanvas = it
                                         persistence.saveBoolean("animated_canvas", it)
+                                    },
+                                    spotifyEnabled = spotifyEnabled,
+                                    onSpotifyEnabledChange = {
+                                        spotifyEnabled = it
+                                        persistence.saveBoolean(DesktopSpotify.ENABLED_KEY, it)
+                                        if (!it && destination == DesktopDestination.SPOTIFY) destination = DesktopDestination.LIBRARY
                                     },
                                     spotifyCanvasReady = spotifyCanvasCookie.isNotBlank(),
                                     onOpenSpotifyCanvasSetup = { overlays.settingsPage = DesktopSettingsPage.SPOTIFY_CANVAS },
@@ -4022,6 +4041,18 @@ fun BitChordDesktopApp() {
                             contentPadding = sharedPagePadding,
                             topPadding = 0.dp,
                             showField = false,
+                        )
+                        destination == DesktopDestination.SPOTIFY && spotifyEnabled -> DesktopSpotifyPage(
+                            connected = spotifyCanvasCookie.isNotBlank(),
+                            onConnect = { overlays.settingsPage = DesktopSettingsPage.SPOTIFY_CANVAS },
+                            onPlay = { songs, index, title ->
+                                playSongs(songs, index, DesktopQueueSource(title, PlaybackSourceType.BROWSE))
+                            },
+                            onImport = { title, songs ->
+                                playlists = playlists + DesktopPlaylist(title = title, songs = songs)
+                                persistence.savePlaylists(playlists)
+                            },
+                            contentPadding = sharedPagePadding,
                         )
                         destination == DesktopDestination.LIBRARY && libraryShowAll != null -> Column(Modifier.fillMaxSize()) {
                             // The phone keeps the grid's sort beside it, in the bar above; here it sits
@@ -4486,6 +4517,7 @@ internal fun DesktopToolbarButton(
 @Composable
 private fun DesktopSidebar(
     destination: DesktopDestination,
+    spotifyEnabled: Boolean,
     settingsOpen: Boolean,
     accountPlaylists: List<ShelfItem>,
     localPlaylists: List<DesktopPlaylist>,
@@ -4561,6 +4593,9 @@ private fun DesktopSidebar(
             }
             DesktopSidebarItem(BitChordIcons.Library, "Library", destination == DesktopDestination.LIBRARY) {
                 onDestinationSelected(DesktopDestination.LIBRARY)
+            }
+            if (spotifyEnabled) DesktopSidebarItem(Icons.Rounded.LibraryMusic, "Spotify", destination == DesktopDestination.SPOTIFY) {
+                onDestinationSelected(DesktopDestination.SPOTIFY)
             }
             DesktopSidebarItem(BitChordIcons.Search, "Search", destination == DesktopDestination.SEARCH) {
                 onDestinationSelected(DesktopDestination.SEARCH)
@@ -5556,6 +5591,8 @@ private fun DesktopSettingsScreen(
     onCrossfadeSecondsChange: (Int) -> Unit,
     animatedCanvas: Boolean,
     onAnimatedCanvasChange: (Boolean) -> Unit,
+    spotifyEnabled: Boolean,
+    onSpotifyEnabledChange: (Boolean) -> Unit,
     spotifyCanvasReady: Boolean,
     onOpenSpotifyCanvasSetup: () -> Unit,
     dontRepeatSuggestions: Boolean,
@@ -6225,6 +6262,12 @@ private fun DesktopSettingsScreen(
                 // integration option Android has lives behind it; inline, the
                 // list was longer than the rest of Settings put together.
                 SettingsGroup(DesktopStrings["d_account", "Account"]) {
+                    SettingsToggle("Spotify", "Show Spotify playlists and Liked Songs in Library", spotifyEnabled, onSpotifyEnabledChange)
+                    if (spotifyEnabled) SettingsNavigationRow(
+                        title = if (spotifyCanvasReady) "Spotify account" else "Add Spotify account",
+                        subtitle = if (spotifyCanvasReady) "Connected · manage or disconnect" else "Sign in with Chromium, Brave or Chrome",
+                        onClick = onOpenSpotifyCanvasSetup,
+                    )
                     SettingsRow(
                         Icons.Rounded.Share,
                         DesktopStrings["account_integrations", "Account & integrations"],

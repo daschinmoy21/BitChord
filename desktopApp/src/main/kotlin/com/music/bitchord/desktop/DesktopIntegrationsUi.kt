@@ -109,65 +109,73 @@ internal fun DesktopLastfmLoginDialog(onDismiss: () -> Unit) {
     }
 }
 
-/**
- * The `sp_dc` cookie Spotify Canvas needs.
- *
- * Android's `SpotifyCanvasAuthScreen`, with its four steps unchanged — they name a browser's
- * developer tools, which is where a desktop listener already is.
- */
+/** Account setup shared by Spotify Library and Canvas. */
 @Composable
 internal fun DesktopSpotifyCanvasDialog(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
     var token by remember { mutableStateOf(DesktopSpotifyToken.cookie()) }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    var busy by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var manual by remember { mutableStateOf(false) }
+    val browsers = remember { DesktopBrowserSignIn.installed() }
+    val scope = rememberCoroutineScope()
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    fun save() {
-        DesktopSpotifyToken.setCookie(token.trim())
-        onSaved(token.trim())
-        onDismiss()
+    fun dismiss() { job?.cancel(); onDismiss() }
+    fun connect(browser: DesktopBrowserSignIn.Browser) {
+        if (busy != null) return
+        busy = browser.name
+        error = null
+        job = scope.launch {
+            try {
+                DesktopSpotify.connect(browser)
+                onSaved(DesktopSpotifyToken.cookie())
+                onDismiss()
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error = failure.message ?: "Could not connect Spotify"
+            } finally { busy = null }
+        }
     }
 
-    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 420) {
+    DesktopDialogPanel(onDismiss = ::dismiss, maxWidth = 460) {
         DialogHeading(
-            title = DesktopStrings["spotify_canvas_setup", "Spotify Canvas setup"],
-            message = DesktopStrings["spotify_canvas_setup_description", "To use Spotify Canvas, provide your Spotify sp_dc cookie."],
+            title = "Spotify account",
+            message = error ?: if (busy != null) "Finish signing in to Spotify in $busy, then close the sign-in window."
+                else "Connect your playlists and Liked Songs. Tracks play through matching YouTube Music recordings.",
+            isError = error != null,
         )
-        Text(
-            DesktopStrings[
-                "spotify_canvas_setup_steps",
-                "1. Sign in at open.spotify.com in a browser.\n" +
-                    "2. Open Developer Tools, then Application and Cookies.\n" +
-                    "3. Copy the value of the sp_dc cookie.\n" +
-                    "4. Paste it below.",
-            ],
-            modifier = Modifier.fillMaxWidth().padding(horizontal = panelInset(22.dp), vertical = 4.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = DesktopSecondary,
-        )
-        Spacer(Modifier.height(12.dp))
-        DialogField(
-            value = token,
-            onValueChange = { token = it },
-            placeholder = DesktopStrings["spdc_token", "sp_dc token"],
-            isPassword = true,
-            onSubmit = ::save,
-            modifier = Modifier.focusRequester(focus),
-        )
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = panelInset(22.dp)),
-            horizontalArrangement = Arrangement.Start,
-        ) {
-            TextButton(onClick = { DesktopExternalLinks.open("https://open.spotify.com/") }) {
-                Text(DesktopStrings["d_open_spotify", "Open Spotify"], color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
+        browsers.forEach { browser ->
+            TextButton(onClick = { connect(browser) }, enabled = busy == null,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Sign in with ${browser.name}", color = DesktopAccent)
             }
         }
-        DialogActions(
-            confirm = DesktopStrings["save", "Save"],
-            confirmEnabled = true,
-            busy = false,
-            onConfirm = ::save,
-            onDismiss = onDismiss,
-        )
+        if (busy != null) CircularProgressIndicator(modifier = Modifier.padding(22.dp).size(20.dp), color = DesktopAccent)
+        if (browsers.isEmpty()) Text("Install Chromium, Brave or Chrome to sign in with a browser.",
+            modifier = Modifier.padding(horizontal = 22.dp), color = DesktopSecondary)
+        TextButton(onClick = { manual = !manual }, enabled = busy == null) {
+            Text("Use a Spotify cookie", color = DesktopSecondary)
+        }
+        if (manual) {
+            Text("Sign in at open.spotify.com, then copy the sp_dc cookie from your browser's developer tools.",
+                modifier = Modifier.padding(horizontal = 22.dp), color = DesktopSecondary,
+                style = MaterialTheme.typography.bodySmall)
+            DialogField(value = token, onValueChange = { token = it }, placeholder = "sp_dc cookie",
+                enabled = busy == null, isPassword = true)
+            TextButton(onClick = {
+                DesktopPersistence().saveString("spotify_browser", "")
+                DesktopSpotifyToken.setCookie(token.trim())
+                onSaved(token.trim())
+                onDismiss()
+            }, enabled = busy == null && token.isNotBlank()) { Text("Save cookie", color = DesktopAccent) }
+        }
+        if (DesktopSpotifyToken.cookie().isNotBlank()) TextButton(onClick = {
+            DesktopSpotify.disconnect()
+            onSaved("")
+            onDismiss()
+        }, enabled = busy == null) { Text("Disconnect Spotify", color = DesktopSecondary) }
+        TextButton(onClick = ::dismiss) { Text(if (busy == null) "Close" else "Cancel", color = DesktopSecondary) }
     }
 }
 

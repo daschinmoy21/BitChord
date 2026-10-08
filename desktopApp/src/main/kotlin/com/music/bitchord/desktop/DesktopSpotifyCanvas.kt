@@ -53,7 +53,7 @@ internal object DesktopSpotifyCanvas {
     private data class TrackHit(val uri: String, val title: String, val artist: String, val album: String?)
 
     fun search(title: String, artist: String, album: String?): DesktopCanvasArtwork? {
-        val token = DesktopSpotifyToken.accessToken() ?: return null
+        val token = kotlinx.coroutines.runBlocking { DesktopSpotify.accessToken() } ?: return null
         val hit = searchTrack(title, artist, album, token) ?: return null
         val canvasUrl = fetchCanvasUrl(hit.uri, token) ?: return null
         return DesktopCanvasArtwork(
@@ -68,7 +68,7 @@ internal object DesktopSpotifyCanvas {
     /** A release's canvas, read off its first track — Spotify hangs Canvas off tracks, not
      * releases, so there is no album-level lookup to make directly. */
     fun searchAlbum(album: String, artist: String): DesktopCanvasArtwork? {
-        val token = DesktopSpotifyToken.accessToken() ?: return null
+        val token = kotlinx.coroutines.runBlocking { DesktopSpotify.accessToken() } ?: return null
         val items = get(
             url("$SEARCH_URL", listOf("q" to "$album $artist", "type" to "album", "limit" to "10")),
             token,
@@ -318,13 +318,9 @@ private fun ByteArrayOutputStream.writeVarint(value: Long) {
 }
 
 /**
- * The bearer Spotify's own web player mints for itself.
- *
- * Android loads the real player in an offscreen WebView and reads the token it mints, because a
- * request signed here is answered with a token the downstream endpoints then refuse. A desktop
- * build has no embedded browser to do that in, so this takes the only route left: the web player's
- * own `/api/token`, signed with the TOTP it derives from a secret published in its bundle. When
- * Spotify declines, the canvas chain simply falls through to its other three sources.
+ * Shared Spotify token cache for Library and Canvas. Browser-connected accounts are refreshed by
+ * [DesktopSpotify] through the real web player. The direct endpoint remains a fallback for
+ * manually supplied cookies from older desktop installations.
  */
 internal object DesktopSpotifyToken {
 
@@ -343,11 +339,30 @@ internal object DesktopSpotifyToken {
     /** The listener's `sp_dc` cookie. Nothing here works without it. */
     fun cookie(): String = DesktopPersistence().string(KEY_SPDC).trim()
 
+    @Synchronized
     fun setCookie(value: String) {
         DesktopPersistence().saveString(KEY_SPDC, value.trim())
         cachedAccessToken = null
         accessTokenExpiresAtMs = 0L
         retryAfterMs = 0L
+        cachedClientId = null
+        cachedClientToken = null
+        clientTokenExpiresAtMs = 0L
+        session = null
+    }
+
+    @Synchronized
+    fun acceptBrowserToken(payload: JsonObject) {
+        cachedAccessToken = payload["accessToken"]?.jsonPrimitive?.contentOrNull
+        accessTokenExpiresAtMs = payload["accessTokenExpirationTimestampMs"]?.jsonPrimitive?.contentOrNull
+            ?.toLongOrNull() ?: (System.currentTimeMillis() + 3_600_000)
+        cachedClientId = payload["clientId"]?.jsonPrimitive?.contentOrNull
+        retryAfterMs = 0L
+    }
+
+    @Synchronized
+    fun freshBrowserToken(): String? = cachedAccessToken?.takeIf {
+        System.currentTimeMillis() < accessTokenExpiresAtMs - 30_000
     }
 
     @Synchronized

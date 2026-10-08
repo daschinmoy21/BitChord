@@ -271,7 +271,7 @@ private fun DesktopSelectorAction(
 /** Signing in: a browser to take the session from, or the cookie by hand. */
 @Composable
 internal fun DesktopSignInDialog(
-    interactiveBrowser: DesktopBrowserSignIn.Browser?,
+    interactiveBrowsers: List<DesktopBrowserSignIn.Browser>,
     onBrowserSignIn: (DesktopBrowserSignIn.Browser) -> Unit,
     onImport: (DesktopBrowserCookies.Profile) -> Unit,
     onPaste: (String) -> Unit,
@@ -318,10 +318,10 @@ internal fun DesktopSignInDialog(
                 modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 20.dp),
             )
             Text(
-                if (interactiveBrowser != null) {
+                if (interactiveBrowsers.isNotEmpty()) {
                     DesktopStrings[
                         "d_choose_the_browser_sign_in_button_below",
-                        "Choose ${interactiveBrowser.label} below, then finish signing in inside " +
+                        "Choose ${interactiveBrowsers.first().label} below, then finish signing in inside " +
                             "the separate browser window and close it to return to BitChord.",
                     ]
                 } else {
@@ -388,8 +388,8 @@ internal fun DesktopSignInDialog(
                 }
                 else -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
                     val found = profiles.orEmpty()
-                    interactiveBrowser?.let { browser ->
-                        item(key = "interactive-browser") {
+                    interactiveBrowsers.forEach { browser ->
+                        item(key = "interactive-browser-${browser.name}") {
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -402,9 +402,9 @@ internal fun DesktopSignInDialog(
                                     Text(browser.label, color = Color.White)
                                     Text(
                                         if (busy == browser.label) {
-                                            "Finish signing in, then close Chrome"
+                                            "Finish signing in, then close ${browser.name}"
                                         } else {
-                                            "Opens normal Chrome; close it when signed in"
+                                            "Opens ${browser.name}; close it when signed in"
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = DesktopSecondary,
@@ -416,7 +416,7 @@ internal fun DesktopSignInDialog(
                             }
                         }
                     }
-                    if (found.isEmpty() && interactiveBrowser == null) {
+                    if (found.isEmpty() && interactiveBrowsers.isEmpty()) {
                         item {
                             Text(
                                 DesktopStrings["d_no_browser_profile_was_found_on_this_machine", "No browser profile was found on this machine."],

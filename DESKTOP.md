@@ -8,6 +8,23 @@ configured target.
 This personal fork focuses on NixOS with niri. It keeps the shared Android and Windows
 code while improving the Linux desktop experience; selected changes are intended for upstream later.
 
+## Spotify and browser sign-in
+
+Enable **Settings → Account → Spotify**, then choose **Add Spotify account** and an
+installed browser. Finish signing in to Spotify, then close the separate sign-in window
+to return to BitChord. Chromium, Brave, Chrome, Edge and Vivaldi are offered when installed;
+on Linux their launchers must be on `PATH`. YouTube Music sign-in offers the same browser choices.
+
+Spotify appears in the sidebar and Library while enabled. Browse playlists and Liked Songs,
+play matched YouTube Music recordings, or import them into persistent local playlists.
+You can also import a public Spotify playlist link without connecting an account. Connect
+an account for complete pagination of long playlists and access to private playlists.
+Matching reports any songs it could not find and can be cancelled.
+
+The Spotify account is shared with Canvas. **Manage account → Disconnect Spotify** removes
+its saved credentials and dedicated browser profiles. Disabling the Settings toggle hides
+Spotify from the library without disconnecting the account.
+
 ## Developing on NixOS with niri
 
 The desktop target uses Java 21. The repository's [flake.nix](flake.nix) provides the JDK,
