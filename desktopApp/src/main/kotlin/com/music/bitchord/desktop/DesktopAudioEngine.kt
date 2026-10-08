@@ -50,8 +50,8 @@ internal fun blendElapsedUs(samples: Long, channels: Int, sampleRate: Int): Long
 class DesktopPlaybackEngine(
     private val onEnded: () -> Unit,
     private val onCrossfaded: (Song) -> Unit = {},
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _state = MutableStateFlow(DesktopPlaybackState())
     val state: StateFlow<DesktopPlaybackState> = _state.asStateFlow()
 
@@ -241,7 +241,7 @@ class DesktopPlaybackEngine(
         commands += Command.Flush
         searchingBetterFor = null
         incomingSearchingFor = null
-        _state.value = DesktopPlaybackState(song = song, volume = volume, isLoading = true)
+        _state.value = DesktopPlaybackState(song = song, volume = volume, isLoading = true, positionMs = startAtMs.coerceAtLeast(0L))
         resolveJob = scope.launch {
             // Only when the file is really there: a download record can outlive the file it names,
             // and handing the decoder a path that is not there fails as "could not open stream"
