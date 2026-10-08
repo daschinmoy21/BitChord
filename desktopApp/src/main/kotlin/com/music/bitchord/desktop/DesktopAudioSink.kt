@@ -53,6 +53,7 @@ internal class DesktopAudioSink {
                 openedForSelection = selectedDevice
                 format = requested
                 diagnosticBlocks = 0
+                stopped = false
                 closeLine(previous)
                 DesktopTrackLog.log(
                     "audio output opened: ${deviceName ?: "Windows system default"} · " +
@@ -118,6 +119,7 @@ internal class DesktopAudioSink {
         openedForSelection = selectedDevice
         format = accepted
         diagnosticBlocks = 0
+        stopped = false
         closeLine(previous)
         DesktopTrackLog.log(
             "audio output opened: ${deviceName ?: "system default"} · " +
@@ -216,11 +218,25 @@ internal class DesktopAudioSink {
     fun framesPlayed(): Long =
         if (windowsOutput) DesktopWindowsAudio.framesPlayed() else line?.longFramePosition ?: 0L
 
+    /**
+     * Whether the device has been told to stop. Tracked here because the audio thread asks for a
+     * pause on every pass while paused: stopping an already stopped line every 20 ms kept
+     * PipeWire suspending the stream, and resuming then waited on the device. A line is opened
+     * running, so [open] and [close] clear it.
+     */
+    @Volatile private var stopped = false
+
+    /** Stops the device once; further calls while paused do nothing. */
     fun pause() {
+        if (stopped) return
+        stopped = true
         if (windowsOutput) DesktopWindowsAudio.pause() else line?.stop()
     }
 
+    /** Starts the device again; does nothing unless [pause] stopped it. */
     fun resume() {
+        if (!stopped) return
+        stopped = false
         if (windowsOutput) DesktopWindowsAudio.resume() else line?.start()
     }
 
@@ -242,6 +258,7 @@ internal class DesktopAudioSink {
             openedOn = null
             openedForSelection = null
             diagnosticBlocks = 0
+            stopped = false
             return
         }
         val target = line ?: return
@@ -249,6 +266,7 @@ internal class DesktopAudioSink {
         openedOn = null
         openedForSelection = null
         diagnosticBlocks = 0
+        stopped = false
         closeLine(target)
     }
 
