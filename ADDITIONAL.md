@@ -1,16 +1,15 @@
 # Additional Documentation
 
-Additional BitChord project and development information will be maintained here.
+This is the documentation index for the personal NixOS/niri BitChord fork. See the
+[README](README.md#about-this-fork) for its focus, upstream credits, and plans to contribute selected changes back.
 
-## Project
-- [Listen Together Server Documentation](backend/README.md): Architecture, synchronization protocol, and deployment instructions for the party server.
-- [Lyrics Translation](docs/LYRICS_TRANSLATION.md): Pipeline documentation for on-demand lyrics translation, timing projection, and UI transitions.
+## Desktop and development
 
-## Development
-Placeholder for project development notes and environment guides.
+- [Desktop setup](DESKTOP.md): Nix development shell, niri/XWayland behavior, AppImage use on NixOS, and Linux/Windows packaging.
+- [Release and update behavior](docs/DESKTOP_RELEASES.md): Fork releases, versioning, desktop update checks, and Android APK artifacts.
+- [Contributing](CONTRIBUTING.md): This fork's `main` workflow, validation, and preparing upstream candidates.
 
-## Technical Notes
-Placeholder for component-specific technical documentation and implementation notes.
+## Shared functionality
 
-## Future Documentation
-Placeholder for future project and technical documentation.
+- [Listen Together server](backend/README.md): Architecture, synchronization protocol, and deployment instructions for the party server.
+- [Lyrics translation](docs/LYRICS_TRANSLATION.md): On-demand translation, timing projection, and UI transitions.

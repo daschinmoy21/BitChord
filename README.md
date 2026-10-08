@@ -7,26 +7,45 @@
 
 # BitChord
 
-### Aesthetic YouTube Music Client
+### Personal fork for NixOS + niri
 
 <br/>
 
-[![Latest release](https://img.shields.io/github/v/release/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![License](https://img.shields.io/github/license/kushagrasinghx/BitChord?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/kushagrasinghx/BitChord/total?style=for-the-badge&labelColor=0d1117)](https://github.com/kushagrasinghx/BitChord/releases)
-[![Listening now](https://api.bitchord.kushagrasingh.in/api/stats/live/badge.svg)](https://api.bitchord.kushagrasingh.in/api/stats/live)
+[![Fork releases](https://img.shields.io/github/v/release/daschinmoy21/BitChord?include_prereleases&style=for-the-badge&label=Fork%20releases&labelColor=0d1117)](https://github.com/daschinmoy21/BitChord/releases)
+[![License](https://img.shields.io/github/license/daschinmoy21/BitChord?style=for-the-badge&labelColor=0d1117)](LICENSE)
+[![Checks](https://img.shields.io/github/actions/workflow/status/daschinmoy21/BitChord/check.yml?branch=main&style=for-the-badge&labelColor=0d1117)](https://github.com/daschinmoy21/BitChord/actions/workflows/check.yml)
 
 <br/>
 
-[**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
+[**About this fork**](#about-this-fork) · [**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
 
 <br/>
 
-<a href="https://fmhy.net/mobile#youtube-music" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/available/fmhy/cozy.svg" alt="Featured on FMHY" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/daily?language=Kotlin" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
-<a href="https://trendshift.io/repositories/177639?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-177639" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/177639/weekly?language=Kotlin" alt="kushagrasinghx%2FBitChord | Trendshift" width="250" height="55"/></a>
 
 </div>
+
+## About this fork
+
+This is [@daschinmoy21](https://github.com/daschinmoy21)'s personal fork of
+[BitChord](https://github.com/kushagrasinghx/BitChord), optimized for my Linux desktop:
+**NixOS with the niri Wayland compositor**. The focus is making everyday listening smoother
+on that setup, with desktop UX improvements and fixes built on the upstream project.
+
+The work here includes:
+
+- A reproducible Nix development shell and XWayland window-resize handling for niri.
+- Keyboard shortcuts for seeking, skipping, volume, mute, and search, plus a shortcut help dialog.
+- Interface zoom controls with a percentage indicator and an Appearance slider.
+- Restoring the last song paused at its saved position, more readable player stats, and clickable album artist credits.
+- Desktop playback fixes and update checks that follow this fork's releases.
+
+I plan to upstream selected fixes and generally useful UX improvements once they have settled.
+The original app, its branding, and much of its functionality are the work of the
+[upstream maintainers and contributors](https://github.com/kushagrasinghx/BitChord/graphs/contributors).
+
+See [DESKTOP.md](DESKTOP.md) for the NixOS/niri setup and [CONTRIBUTING.md](CONTRIBUTING.md)
+for contributing here or preparing a change for upstream. Android and Windows targets remain
+available, while development in this fork is centered on my Linux setup.
 
 > [!IMPORTANT]
 > BitChord is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
@@ -38,6 +57,8 @@
 <img src="Banner.png" alt="BitChord banner" width="100%" />
 
 <h1><a id="features"></a>Features</h1>
+
+The broader BitChord feature set below is inherited from upstream; availability varies between Android and desktop.
 
 <table>
   <tr>
@@ -89,12 +110,16 @@
 
 <h1><a id="download"></a>Download</h1>
 
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/android/cozy.svg" alt="Download for Android" height="55"/></a>
-<a href="https://github.com/kushagrasinghx/BitChord/releases" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/supported/windows/cozy.svg" alt="Download for Windows" height="55"/></a>
+Use this fork's [Releases](https://github.com/daschinmoy21/BitChord/releases), including prereleases.
+The [rolling main build](https://github.com/daschinmoy21/BitChord/releases/tag/build-main)
+contains the latest successfully packaged main-branch build.
 
-Grab the latest signed APK from the [Releases](https://github.com/kushagrasinghx/BitChord/releases) page. Sideloading requires enabling "Install unknown apps" for whichever app you download it with.
+- **Linux:** download `BitChord-linux-x86_64.AppImage`. On NixOS, run it through `appimage-run`; see [DESKTOP.md](DESKTOP.md).
+- **Android:** download `BitChord-android-dev.apk`, an installable universal **BitChord Dev** build. It uses `com.dev.bitchord`, so it can coexist with the upstream production app. Enable “Install unknown apps” for the app you download it with.
+- **Windows and versioned Linux packages:** see [DESKTOP.md](DESKTOP.md) for the artifacts produced by the versioned release workflow.
 
-For the Windows and Linux desktop app, see [DESKTOP.md](DESKTOP.md).
+These are builds of this fork. The [upstream releases](https://github.com/kushagrasinghx/BitChord/releases)
+remain available for the original project.
 
 </div>
 
@@ -104,11 +129,11 @@ For the Windows and Linux desktop app, see [DESKTOP.md](DESKTOP.md).
 
 <h1><a id="contributing"></a>Contributing</h1>
 
-We welcome contributions to BitChord! Please review our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
+Bug fixes and desktop UX improvements are welcome. Open issues and pull requests against this fork’s `main` branch, and mention whether a change should eventually go upstream. Please review the [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
 
 [**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
 
-### Thanks to all contributors ❤
+### Thanks to the upstream contributors ❤
 
 <a href="https://github.com/kushagrasinghx/BitChord/graphs/contributors">
   <img src="https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg" />
@@ -122,7 +147,7 @@ We welcome contributions to BitChord! Please review our [Contributing Guide](CON
 
 <h1><a id="support"></a>Support</h1>
 
-BitChord is free and always will be — if it's earned a spot in your rotation, you can chip in here:
+The links below support the **upstream BitChord maintainers**. This fork keeps their work and attribution visible:
 
 <a href="https://ko-fi.com/kushagrasinghx" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/kofi-singular-alt/cozy.svg" alt="Support me on Ko-fi" height="55"/></a>
 <a href="https://paypal.me/kuxhagrasingh" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/paypal-plural/cozy.svg" alt="Support us on PayPal" height="55"/></a>
