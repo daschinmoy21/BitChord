@@ -2918,6 +2918,7 @@ fun BitChordDesktopApp() {
 
     fun setVolumeFromKeys(level: Float) {
         volume = level.coerceIn(0.0f, 1.0f)
+        playbackEngine.setVolume(volume)
         persistence.saveString("volume", volume.toString())
         if (volume > 0f) volumeBeforeMute = null
     }
@@ -2930,14 +2931,14 @@ fun BitChordDesktopApp() {
             if (selectedSong != null && !DesktopListenTogether.state.value.controlsLocked) {
                 // The engine's own reading, not this composition's: a held key seeks again before
                 // the page has redrawn with where the last one landed.
-                seekPlayer(playbackEngine.state.value.positionMs + deltaMs)
+                seekPlayer((playbackEngine.state.value.positionMs + deltaMs).coerceAtLeast(0L))
                 true
             } else {
                 false
             }
         }
         DesktopGlobalKeys.skipPrevious = {
-            if (selectedSong != null) {
+            if (selectedSong != null && !DesktopListenTogether.state.value.controlsLocked) {
                 playPrevious()
                 true
             } else {
@@ -2945,7 +2946,7 @@ fun BitChordDesktopApp() {
             }
         }
         DesktopGlobalKeys.skipNext = {
-            if (selectedSong != null) {
+            if (selectedSong != null && !DesktopListenTogether.state.value.controlsLocked) {
                 playNext()
                 true
             } else {
@@ -2953,7 +2954,7 @@ fun BitChordDesktopApp() {
             }
         }
         DesktopGlobalKeys.stepVolume = { delta ->
-            setVolumeFromKeys(volume + delta)
+            setVolumeFromKeys(playbackEngine.state.value.volume + delta)
             true
         }
         DesktopGlobalKeys.toggleMute = {

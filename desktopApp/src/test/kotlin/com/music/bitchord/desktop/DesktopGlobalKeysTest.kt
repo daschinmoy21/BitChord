@@ -224,3 +224,38 @@ class TextEntryFocusReleaseTest {
         assertEquals(1, cleared)
     }
 }
+
+class DesktopHeldPlaybackKeysTest {
+    @Test
+    fun `changing modifiers on a held arrow invokes the new action`() {
+        var seeks = 0
+        var skips = 0
+        DesktopGlobalKeys.seekBy = { seeks++; true }
+        DesktopGlobalKeys.skipPrevious = { skips++; true }
+        try {
+            kotlin.test.assertTrue(DesktopGlobalKeys.handlePlaybackPress(KeyEvent.VK_LEFT, DesktopGlobalAction.SEEK_BACK))
+            kotlin.test.assertTrue(DesktopGlobalKeys.handlePlaybackPress(KeyEvent.VK_LEFT, DesktopGlobalAction.PREVIOUS))
+            kotlin.test.assertTrue(DesktopGlobalKeys.handlePlaybackPress(KeyEvent.VK_LEFT, DesktopGlobalAction.PREVIOUS))
+            kotlin.test.assertEquals(1, seeks)
+            kotlin.test.assertEquals(1, skips)
+        } finally {
+            DesktopGlobalKeys.releasePlaybackKey(KeyEvent.VK_LEFT)
+            DesktopGlobalKeys.seekBy = null
+            DesktopGlobalKeys.skipPrevious = null
+        }
+    }
+
+    @Test
+    fun `a repeat that becomes unavailable falls through`() {
+        var allowed = true
+        DesktopGlobalKeys.seekBy = { allowed }
+        try {
+            kotlin.test.assertTrue(DesktopGlobalKeys.handlePlaybackPress(KeyEvent.VK_LEFT, DesktopGlobalAction.SEEK_BACK))
+            allowed = false
+            kotlin.test.assertFalse(DesktopGlobalKeys.handlePlaybackPress(KeyEvent.VK_LEFT, DesktopGlobalAction.SEEK_BACK))
+        } finally {
+            DesktopGlobalKeys.releasePlaybackKey(KeyEvent.VK_LEFT)
+            DesktopGlobalKeys.seekBy = null
+        }
+    }
+}

@@ -135,7 +135,7 @@ internal object DesktopGlobalKeys {
     private var spaceHeld = false
 
     // Keys taken on their press, so their release (and typed echo) is taken with them.
-    private val heldKeys = mutableSetOf<Int>()
+    private val heldKeys = mutableMapOf<Int, DesktopGlobalAction>()
     private var typedEchoPending = false
 
     /** Runs what [action] asks of the app, and says whether the app did it. */
@@ -165,8 +165,8 @@ internal object DesktopGlobalKeys {
 
     private val dispatcher = KeyEventDispatcher { event ->
         // The release and typed echo of a key that was taken go with it.
-        if (event.id == KeyEvent.KEY_RELEASED && heldKeys.remove(event.keyCode)) {
-            if (heldKeys.isEmpty()) typedEchoPending = false
+        if (event.id == KeyEvent.KEY_RELEASED && heldKeys.remove(event.keyCode) != null) {
+            typedEchoPending = heldKeys.values.any { it.typesCharacter }
             return@KeyEventDispatcher true
         }
         if (event.id == KeyEvent.KEY_TYPED && typedEchoPending) return@KeyEventDispatcher true
@@ -180,15 +180,7 @@ internal object DesktopGlobalKeys {
         )
         if (action != null && isPlaybackKeyAction(action)) {
             if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
-            if (event.keyCode in heldKeys) {
-                // Key repeat: only the keys that mean "keep going" ask again.
-                if (action.repeats) perform(action)
-                return@KeyEventDispatcher true
-            }
-            if (!perform(action)) return@KeyEventDispatcher false
-            heldKeys += event.keyCode
-            if (action.typesCharacter) typedEchoPending = true
-            return@KeyEventDispatcher true
+            return@KeyEventDispatcher handlePlaybackPress(event.keyCode, action)
         }
         // The typed echo of a zoom key (it carries the character but no key code) is taken too.
         if (action == null && event.id == KeyEvent.KEY_TYPED &&
@@ -236,6 +228,24 @@ internal object DesktopGlobalKeys {
                 true
             }
         }
+    }
+
+    /** Tracks the action as well as the physical key, so changed modifiers start a new action. */
+    internal fun handlePlaybackPress(keyCode: Int, action: DesktopGlobalAction): Boolean {
+        if (heldKeys[keyCode] == action && !action.repeats) return true
+        if (!perform(action)) {
+            heldKeys.remove(keyCode)
+            typedEchoPending = heldKeys.values.any { it.typesCharacter }
+            return false
+        }
+        heldKeys[keyCode] = action
+        typedEchoPending = heldKeys.values.any { it.typesCharacter }
+        return true
+    }
+
+    internal fun releasePlaybackKey(keyCode: Int) {
+        heldKeys.remove(keyCode)
+        typedEchoPending = heldKeys.values.any { it.typesCharacter }
     }
 
     private var installed = false
