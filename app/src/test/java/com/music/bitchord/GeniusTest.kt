@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 class GeniusTest {
 
@@ -108,42 +109,37 @@ class GeniusTest {
     }
 
     @Test
-    fun `live genius search and scraping test with noisy titles`() = kotlinx.coroutines.runBlocking {
-        println("--- TEST 1: Queen - Bohemian Rhapsody (Official Video) ---")
-        val lyrics1 = Genius.lyrics("Bohemian Rhapsody (Official Video)", "Queen")
-        assertNotNull(lyrics1)
-        assertTrue(lyrics1!!.isNotEmpty())
-        println("Lyrics preview (first 5 lines):")
-        lyrics1.take(5).forEach { println("  [LyricLine] ${it.text}") }
-
-        println("\n--- TEST 2: Ed Sheeran - Shape of You [Official Lyric Video] ---")
-        val lyrics2 = Genius.lyrics("Shape of You [Official Lyric Video]", "Ed Sheeran")
-        assertNotNull(lyrics2)
-        assertTrue(lyrics2!!.isNotEmpty())
-        println("Lyrics preview (first 5 lines):")
-        lyrics2.take(5).forEach { println("  [LyricLine] ${it.text}") }
-
-        println("\n--- TEST 3: GEJLON - USA (YouTube: lrJLIE3jGOs) ---")
-        val lyrics3 = Genius.lyrics("USA", "GEJLON")
-        if (lyrics3 != null) {
-            println("Lyrics found for 'USA' by 'GEJLON' (${lyrics3.size} lines):")
-            lyrics3.take(10).forEach { println("  [LyricLine] ${it.text}") }
-        } else {
-            println("No lyrics found on Genius for 'USA' by 'GEJLON'")
+    fun `searches noisy titles and scrapes lyrics without live network access`() = kotlinx.coroutines.runBlocking {
+        val queries = mutableListOf<String>()
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            assertEquals("BitChord", request.header("User-Agent"))
+            val body = if (request.url.encodedPath == "/api/search/multi") {
+                queries += request.url.queryParameter("q")!!
+                """{"response":{"sections":[{"type":"song","hits":[{"result":{
+                    "title":"Bohemian Rhapsody","artist_names":"Queen",
+                    "url":"https://genius.com/Queen-bohemian-rhapsody-lyrics"
+                }}]}]}}"""
+            } else {
+                assertEquals("/Queen-bohemian-rhapsody-lyrics", request.url.encodedPath)
+                sampleGeniusHtml
+            }
+            okhttp3.Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(200).message("OK").body(body.toResponseBody()).build()
+        }.build()
+        val expected = Genius.parseHtml(sampleGeniusHtml)
+        for (title in listOf("Bohemian Rhapsody (Official Video)", "♪ Queen - Bohemian Rhapsody [OFFICIAL MUSIC VIDEO] Prod. Someone ♪")) {
+            assertEquals(expected, Genius.lyrics(title, "Queen", client))
         }
+        assertEquals(listOf("Queen Bohemian Rhapsody", "Queen Bohemian Rhapsody"), queries)
+    }
 
-        println("\n--- TEST 4: Full YouTube title: ♪ GEJLON - USA [OFFICIAL MUSIC VIDEO] Prod. Jake Angel Beats ♪ ---")
-        val lyrics4 = Genius.lyrics("♪ GEJLON - USA [OFFICIAL MUSIC VIDEO] Prod. Jake Angel Beats ♪", "Gejlon")
-        assertNotNull(lyrics4)
-        if (lyrics4 != null) {
-            println("Lyrics found for full YouTube video title (${lyrics4.size} lines):")
-            lyrics4.take(10).forEach { println("  [LyricLine] ${it.text}") }
-        } else {
-            println("No lyrics found on Genius for full YouTube title")
-        }
-
-        assertNotNull(lyrics3)
-        assertNotNull(lyrics4)
-        assertEquals(lyrics3, lyrics4)
+    @Test
+    fun `an unavailable provider returns no lyrics`() = kotlinx.coroutines.runBlocking {
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                .code(403).message("Forbidden").body("challenge".toResponseBody()).build()
+        }.build()
+        org.junit.Assert.assertNull(Genius.lyrics("Song", "Artist", client))
     }
 }

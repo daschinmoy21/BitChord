@@ -57,6 +57,28 @@ jobs:
             "$PWD/appimagetool.AppImage"
           ls -lh dist
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-artifacts
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  android:
+    uses: ./.github/workflows/android-build.yml
+    with:
+      version: 1.8-fork.${{ github.run_number }}
+    secrets: inherit
+
+  publish:
+    needs: [appimage, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-artifacts'
+          merge-multiple: true
+          path: dist
       - name: Publish the rolling prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,8 +86,8 @@ jobs:
           tag="build-${GITHUB_REF_NAME//\//-}"
           short=$(git rev-parse --short HEAD)
           gh release delete "$tag" --cleanup-tag --yes || true
-          gh release create "$tag" dist/BitChord-linux-x86_64.AppImage \
+          gh release create "$tag" dist/* \
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Fork build: $GITHUB_REF_NAME ($short)" \
-            --notes "Built from $GITHUB_REF_NAME at $short (run #${{ github.run_number }})."
+            --notes "Built from $GITHUB_REF_NAME at $short (run #${{ github.run_number }}). Includes a universal Android APK; without production signing secrets it is the separate BitChord Dev app."
