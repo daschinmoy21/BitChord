@@ -81,7 +81,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 26
-        versionName = "1.8"
+        versionName = providers.gradleProperty("bitchord.version").orElse("1.8").get().removePrefix("v")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
