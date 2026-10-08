@@ -347,6 +347,7 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
     val nerdStyle = MaterialTheme.typography.labelSmall
     val pillShape = RoundedCornerShape(6.dp)
     val pillColor = Color.Black.copy(alpha = 0.6f)
+    val pillModifier = Modifier.background(pillColor, pillShape).padding(horizontal = 6.dp, vertical = 1.dp)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -360,9 +361,7 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .background(pillColor, pillShape)
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
+                modifier = pillModifier,
             )
         }
         // Only when Automix is actually switched on: otherwise this would
@@ -395,9 +394,7 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .background(pillColor, pillShape)
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
+                modifier = pillModifier,
             )
         }
     }
