@@ -339,27 +339,29 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
     }.collectAsStateWithLifecycle(initialValue = PlayerPlatform.host.party.value.inParty)
     // A plain white line reads fine over the usual dark tile, but a light
     // stretch of an animated cover — sky, snow, a pale sleeve — washes it out
-    // entirely. The shadow costs nothing on a dark background and is what
-    // keeps it legible on a bright one.
-    val nerdStyle = MaterialTheme.typography.labelSmall.copy(
-        shadow = Shadow(
-            color = Color.Black.copy(alpha = 0.55f),
-            offset = Offset(0f, 1f),
-            blurRadius = 4f,
-        ),
-    )
+    // entirely. A text shadow cannot fix that: on a flat white sleeve the
+    // shadow sits on white too, so it recovers nothing. Each line therefore
+    // sits on its own small translucent dark pill. Over a dark cover the pill
+    // is nearly indistinguishable from the cover, so it stays subtle there,
+    // and over a white cover it gives the white text something to stand on.
+    val nerdStyle = MaterialTheme.typography.labelSmall
+    val pillShape = RoundedCornerShape(6.dp)
+    val pillColor = Color.Black.copy(alpha = 0.6f)
+    val pillModifier = Modifier.background(pillColor, pillShape).padding(horizontal = 6.dp, vertical = 1.dp)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
         modifier = modifier,
     ) {
         nerdStats?.describe()?.let { stats ->
             Text(
                 text = stats,
                 style = nerdStyle,
-                color = Color.White.copy(alpha = 0.65f),
+                color = Color.White.copy(alpha = 0.9f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
+                modifier = pillModifier,
             )
         }
         // Only when Automix is actually switched on: otherwise this would
@@ -387,11 +389,12 @@ internal fun SleeveNerdStats(song: Song, modifier: Modifier = Modifier) {
                 style = nerdStyle,
                 // Dimmer than the measured line above it: that one describes
                 // the audio, this one describes the app, and the ranking
-                // should show.
-                color = Color.White.copy(alpha = 0.5f),
+                // should show. Still well clear of the pill's contrast floor.
+                color = Color.White.copy(alpha = 0.75f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
+                modifier = pillModifier,
             )
         }
     }
