@@ -21,6 +21,9 @@ internal class DesktopOverlays {
     /** Which device playback is sent to. */
     var audioOutput by mutableStateOf(false)
 
+    /** The cheat sheet of keyboard shortcuts. */
+    var shortcuts by mutableStateOf(false)
+
     /** The party this device is listening with. */
     var listenTogether by mutableStateOf(false)
     var songMenu by mutableStateOf(false)
