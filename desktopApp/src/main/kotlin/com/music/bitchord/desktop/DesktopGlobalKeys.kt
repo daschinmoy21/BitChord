@@ -141,11 +141,27 @@ internal object DesktopUiScale {
 
     val scale: StateFlow<Float> = _scale
 
-    fun zoomIn() = set(STEPS.firstOrNull { it > _scale.value + EPSILON } ?: STEPS.last())
+    /**
+     * Counts up on every keyboard zoom, so the indicator can show again even when the step lands on
+     * a value it already showed. The Settings slider does not count: it shows the number itself.
+     */
+    private val _keyboardZooms = MutableStateFlow(0L)
 
-    fun zoomOut() = set(STEPS.lastOrNull { it < _scale.value - EPSILON } ?: STEPS.first())
+    val keyboardZooms: StateFlow<Long> = _keyboardZooms
 
-    fun reset() = set(1f)
+    fun zoomIn() = zoomFromKeyboard(STEPS.firstOrNull { it > _scale.value + EPSILON } ?: STEPS.last())
+
+    fun zoomOut() = zoomFromKeyboard(STEPS.lastOrNull { it < _scale.value - EPSILON } ?: STEPS.first())
+
+    fun reset() = zoomFromKeyboard(1f)
+
+    /** Sets the scale from the Settings slider or its reset button. */
+    fun select(value: Float) = set(nearestStep(value))
+
+    private fun zoomFromKeyboard(value: Float) {
+        set(value)
+        _keyboardZooms.value++
+    }
 
     private fun set(value: Float) {
         _scale.value = value
