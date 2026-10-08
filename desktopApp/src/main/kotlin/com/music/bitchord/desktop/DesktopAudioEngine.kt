@@ -1,5 +1,6 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.data.settings.MixBlend
@@ -144,6 +145,8 @@ class DesktopPlaybackEngine(
     ) {
         var gain = 1f
         var finished = false
+        /** This track's own loudness stage, so it carries its state with it when it is promoted. */
+        val loudness = DesktopLoudness()
         var tempo: DesktopTempoBuffer? = null
         var tempoRate = 1.0
         var tempoEaseStep = 0.0
@@ -854,9 +857,10 @@ class DesktopPlaybackEngine(
     /** Mixes the outgoing track with the one coming in, filtering each side. */
     private fun blend(track: Track, block: FloatArray, count: Int): Pair<FloatArray, Int> {
         val incoming = upcoming
-        // Widened first, whether or not a mix is running, then equalised.
+        // Widened first, whether or not a mix is running, then equalised, then levelled.
         widen(spatial, track, block, count)
         equalise(equalizer, block, count)
+        level(track, block, count)
         if (fadeRemaining <= 0 || incoming == null) return block to count
 
         if (mixed.size < count) mixed = FloatArray(count)
@@ -867,6 +871,7 @@ class DesktopPlaybackEngine(
         if (other != null) {
             widen(spatialIncoming, incoming, other, otherCount)
             equalise(equalizerIncoming, other, otherCount)
+            level(incoming, other, otherCount)
         }
         val channels = sink.format.channels.coerceAtLeast(1)
         val plan = activePlan
@@ -1039,6 +1044,21 @@ class DesktopPlaybackEngine(
         processor.setTuning(equalizerEnabled, equalizerCurve, equalizerBalance)
         processor.process(samples, count)
     }
+
+    /** Android's "Loudness normalization", on one track's samples, at that track's own figure. */
+    private fun level(track: Track, samples: FloatArray, count: Int) {
+        val gain = if (loudnessEnabled) loudnessGain(track) else 1f
+        track.loudness.process(samples, count, sink.format.channels, sink.format.sampleRate, gain)
+    }
+
+    /**
+     * YouTube's figure for [track], by its video id. A substitute serving the bytes still carries
+     * it: the YouTube resolve runs alongside the substitute lookup. A track that never went through
+     * that resolve — a download, a cached file from an earlier run, a local file — has none, and
+     * plays at unity.
+     */
+    private fun loudnessGain(track: Track): Float =
+        DesktopLoudness.gainFor(StreamResolver.loudnessDbFor(track.song.videoId))
 
     private fun stretch(samples: FloatArray, count: Int): Pair<FloatArray, Int> {
         val processor = speedProcessor ?: return samples to count
@@ -1399,6 +1419,7 @@ class DesktopPlaybackEngine(
         // first moments of the new position.
         equalizer.reset()
         equalizerIncoming.reset()
+        track.loudness.flush()
         silence?.reset()
         resetPlayhead(track, millis * 1_000)
         // Cleared by [play] once the first of the new position's audio is on its way out.
@@ -1664,6 +1685,7 @@ class DesktopPlaybackEngine(
 
     @Volatile private var equalizerBalance = 0f
     @Volatile private var skipSilenceEnabled = false
+    @Volatile private var loudnessEnabled = true
     @Volatile private var automixPerformance = AutomixPerformanceMode.BALANCED
 
     /** Android's "Automix performance": how much CPU background analysis may use. */
@@ -1692,6 +1714,11 @@ class DesktopPlaybackEngine(
     fun setSkipSilence(enabled: Boolean) {
         skipSilenceEnabled = enabled
         if (!enabled) silence?.reset()
+    }
+
+    /** Android's "Loudness normalization". Turned off, the stage glides back to unity. */
+    fun setLoudnessNormalization(enabled: Boolean) {
+        loudnessEnabled = enabled
     }
 
     private fun precisionBytes(): Int = if (preferFloat) 4 else 2
@@ -1725,6 +1752,10 @@ class DesktopPlaybackEngine(
             bufferBytes = sink.bufferBytes,
             equalizerEnabled = equalizerEnabled,
             skipSilence = skipSilenceEnabled,
+            loudnessNormalization = loudnessEnabled,
+            loudnessGainDb = track?.takeIf { loudnessEnabled }
+                ?.let { StreamResolver.loudnessDbFor(it.song.videoId) }
+                ?.let { 20f * kotlin.math.log10(DesktopLoudness.gainFor(it)) },
         )
     }
 

@@ -683,6 +683,8 @@ fun BitChordDesktopApp() {
     var spatialAudio by remember { mutableStateOf(persistence.boolean("spatial_audio", false)) }
     var dolbyAtmos by remember { mutableStateOf(persistence.boolean("dolby_atmos", true)) }
     var skipSilence by remember { mutableStateOf(persistence.boolean("skip_silence", false)) }
+    // On by default, as on the phone.
+    var loudnessNormalization by remember { mutableStateOf(persistence.boolean("loudness_normalization", true)) }
     var outputPrecision by remember { mutableStateOf(persistence.string("output_precision", "PCM_16")) }
     // The blob backdrop the mesh replaced, kept as an opt-out.
     var legacyMeshGradient by remember { mutableStateOf(persistence.boolean("legacy_mesh_gradient", false)) }
@@ -1699,9 +1701,10 @@ fun BitChordDesktopApp() {
     LaunchedEffect(eqEnabled, eqMode, eqToneX, eqToneY, eqFocused, eqBalance, eqBands) {
         playbackEngine.setEqualizer(eqEnabled, DesktopEqualizerSettings.curve(), eqBalance)
     }
-    LaunchedEffect(spatialAudio, skipSilence, outputPrecision) {
+    LaunchedEffect(spatialAudio, skipSilence, loudnessNormalization, outputPrecision) {
         playbackEngine.setSpatialAudio(spatialAudio)
         playbackEngine.setSkipSilence(skipSilence)
+        playbackEngine.setLoudnessNormalization(loudnessNormalization)
         playbackEngine.setOutputPrecision(outputPrecision)
     }
     // Not while listening together, exactly as on the phone: a blend starts the next track early,
@@ -3697,6 +3700,11 @@ fun BitChordDesktopApp() {
                                         skipSilence = it
                                         persistence.saveBoolean("skip_silence", it)
                                     },
+                                    loudnessNormalization = loudnessNormalization,
+                                    onLoudnessNormalizationChange = {
+                                        loudnessNormalization = it
+                                        persistence.saveBoolean("loudness_normalization", it)
+                                    },
                                     outputPrecision = outputPrecision,
                                     onOutputPrecisionChange = {
                                         outputPrecision = it
@@ -5630,6 +5638,8 @@ private fun DesktopSettingsScreen(
     onDolbyAtmosChange: (Boolean) -> Unit,
     skipSilence: Boolean,
     onSkipSilenceChange: (Boolean) -> Unit,
+    loudnessNormalization: Boolean,
+    onLoudnessNormalizationChange: (Boolean) -> Unit,
     outputPrecision: String,
     onOutputPrecisionChange: (String) -> Unit,
     outputSummary: String,
@@ -5690,6 +5700,12 @@ private fun DesktopSettingsScreen(
             DesktopSettingsSection.entries.forEach { section ->
             if (section == DesktopSettingsSection.PLAYBACK) item {
                     SettingsGroup(DesktopStrings["playback", "Playback"]) {
+                    SettingsToggle(
+                        DesktopStrings["loudness_normalization", "Loudness normalization"],
+                        DesktopStrings["loudness_normalization_subtitle", "Levels every track to the same loudness"],
+                        loudnessNormalization,
+                        onLoudnessNormalizationChange,
+                    )
                     if (!automix) {
                         if (settingsRowVisible(DesktopStrings["crossfade", "Crossfade"])) {
                         Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {

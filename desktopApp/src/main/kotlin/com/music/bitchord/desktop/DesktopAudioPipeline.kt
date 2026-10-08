@@ -20,6 +20,9 @@ internal data class DesktopAudioPipeline(
     val bufferBytes: Int = 0,
     val equalizerEnabled: Boolean = false,
     val skipSilence: Boolean = false,
+    val loudnessNormalization: Boolean = false,
+    /** What loudness normalization is applying to the playing track; null when it has no figure. */
+    val loudnessGainDb: Float? = null,
 ) {
     /** The decoder under its usual name, the same one the quality badge shows. */
     val decoderLabel: String?

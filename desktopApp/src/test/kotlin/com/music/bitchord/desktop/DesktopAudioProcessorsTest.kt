@@ -161,3 +161,57 @@ class DesktopSilenceSkipperTest {
 
     private fun quiet(seconds: Double) = FloatArray((rate * seconds).toInt() * channels)
 }
+
+class DesktopLoudnessTest {
+
+    private val rate = 44_100
+
+    @Test
+    fun `with no correction to make it does not touch the samples`() {
+        val loudness = DesktopLoudness()
+        val samples = tone(frames = 4_000, amplitude = 0.5f)
+        val original = samples.copyOf()
+
+        loudness.process(samples, samples.size, 2, rate, targetGain = 1f)
+
+        assertTrue(samples.contentEquals(original))
+    }
+
+    @Test
+    fun `a loud track is turned down to its figure`() {
+        val loudness = DesktopLoudness()
+        val gain = DesktopLoudness.gainFor(6.0)
+        val samples = tone(frames = 8_000, amplitude = 0.5f)
+        val original = samples.copyOf()
+
+        loudness.process(samples, samples.size, 2, rate, gain)
+
+        val last = samples.size - 2
+        assertEquals(original[last] * gain, samples[last], 1e-4f)
+    }
+
+    @Test
+    fun `a boost never pushes a track past full scale`() {
+        val loudness = DesktopLoudness()
+        val samples = tone(frames = 8_000, amplitude = 0.98f)
+
+        loudness.process(samples, samples.size, 2, rate, DesktopLoudness.gainFor(-10.0))
+
+        assertTrue(samples.all { abs(it) <= 0.985f + 1e-4f }, "peak ${samples.maxOf { abs(it) }}")
+    }
+
+    @Test
+    fun `the figure is held to Android's bounds`() {
+        // No figure is unity; YouTube's sign is inverted, as on the phone.
+        assertEquals(1f, DesktopLoudness.gainFor(null))
+        assertEquals(0.5012f, DesktopLoudness.gainFor(6.0), 1e-3f)
+        // At most 3 dB up, however quiet the master...
+        assertEquals(1.4125f, DesktopLoudness.gainFor(-20.0), 1e-3f)
+        // ...and at most 15 dB down, however loud.
+        assertEquals(0.1778f, DesktopLoudness.gainFor(30.0), 1e-3f)
+    }
+
+    private fun tone(frames: Int, amplitude: Float) = FloatArray(frames * 2) { index ->
+        amplitude * sin(2 * PI * 440 * (index / 2) / rate).toFloat()
+    }
+}

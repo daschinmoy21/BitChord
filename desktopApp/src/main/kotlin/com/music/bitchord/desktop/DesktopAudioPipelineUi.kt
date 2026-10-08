@@ -80,6 +80,14 @@ internal fun DesktopAudioPipelineDialog(
                     DesktopStrings["skip_silence", "Skip silence"],
                     if (pipeline.skipSilence) DesktopStrings["on", "On"] else DesktopStrings["off", "Off"],
                 )
+                PipelineRow(
+                    DesktopStrings["loudness_normalization", "Loudness normalization"],
+                    when {
+                        !pipeline.loudnessNormalization -> DesktopStrings["off", "Off"]
+                        pipeline.loudnessGainDb != null -> "%+.1f dB".format(pipeline.loudnessGainDb)
+                        else -> DesktopStrings["d_loudness_no_figure", "On · no level for this track"]
+                    },
+                )
             }
             PipelineStage(DesktopStrings["pipeline_output_device", "Output"]) {
                 PipelineRow(DesktopStrings["pipeline_output_api", "Output API"], "javax.sound")

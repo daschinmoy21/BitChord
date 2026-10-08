@@ -1,6 +1,8 @@
 package com.music.bitchord.desktop
 
 import kotlin.math.abs
+import kotlin.math.exp
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /** The stereo widener, ported from Android's `SpatialAudioProcessor`. */
@@ -200,5 +202,111 @@ internal class DesktopSilenceSkipper(private val channels: Int, sampleRate: Int)
 
         /** `DEFAULT_MIN_VOLUME_TO_KEEP_PERCENTAGE` of 10. */
         const val KEPT_VOLUME = 0.1f
+    }
+}
+
+/**
+ * Loudness normalization, ported from Android's `LoudnessProcessor`: one track's gain, glided in,
+ * and the peak catcher that keeps a positive gain from pushing the track past full scale.
+ *
+ * One per track, carried on it, so the two sides of a crossfade are each levelled for the song they
+ * are actually playing and the incoming one keeps its state when it is promoted. The gain is read
+ * fresh on every block rather than set once: a YouTube figure often lands a few seconds after the
+ * track starts, and this picks it up on the next block, glided rather than stepped.
+ *
+ * The crossfade's headroom trim is not here, unlike Android's: the desktop mix applies it where the
+ * two sides are summed.
+ */
+internal class DesktopLoudness {
+
+    private var sampleRate = 0
+    private var channels = 0
+    private var currentGain = 1f
+    private var reduction = 1f
+    private var glideCoef = 1f
+    private var releaseCoef = 1f
+
+    /** Set by anything that breaks continuity, so the next block jumps rather than glides. */
+    private var snap = true
+
+    /** Levels [count] interleaved samples where they lie, toward [targetGain]. */
+    fun process(samples: FloatArray, count: Int, channels: Int, sampleRate: Int, targetGain: Float) {
+        if (count <= 0 || channels < 1 || sampleRate <= 0) return
+        if (channels != this.channels || sampleRate != this.sampleRate) {
+            this.channels = channels
+            this.sampleRate = sampleRate
+            glideCoef = coefficient(GLIDE_SECONDS, sampleRate)
+            releaseCoef = coefficient(RELEASE_SECONDS, sampleRate)
+            snap = true
+        }
+        if (snap) {
+            currentGain = targetGain
+            snap = false
+        }
+        // Parked: nothing to scale and nothing that could clip. Returning before touching a sample
+        // keeps the chain bit-exact while normalization is off or the track needs no correction.
+        if (targetGain == 1f && abs(currentGain - 1f) < SETTLED && reduction >= 1f - SETTLED) {
+            currentGain = 1f
+            reduction = 1f
+            return
+        }
+
+        var gain = currentGain
+        var gr = reduction
+        var index = 0
+        while (index + channels <= count) {
+            gain += (targetGain - gain) * glideCoef
+            var peak = 0f
+            for (channel in 0 until channels) {
+                val magnitude = abs(samples[index + channel])
+                if (magnitude > peak) peak = magnitude
+            }
+            peak *= gain
+            val wanted = if (peak > LIMIT) LIMIT / peak else 1f
+            gr = if (wanted < gr) wanted else gr + (wanted - gr) * releaseCoef
+            val applied = gain * gr
+            for (channel in 0 until channels) {
+                samples[index + channel] *= applied
+            }
+            index += channels
+        }
+        currentGain = gain
+        reduction = gr
+    }
+
+    /** After a seek: the limiter lets go, and the gain lands on its figure at once. */
+    fun flush() {
+        reduction = 1f
+        snap = true
+    }
+
+    private fun coefficient(seconds: Double, rate: Int): Float =
+        (1.0 - exp(-1.0 / (seconds * rate))).toFloat()
+
+    companion object {
+        /** Just under full scale, so float and 16-bit outputs round the same way. */
+        private const val LIMIT = 0.985f
+
+        /** Time constant for gain changes: long enough not to zipper. */
+        private const val GLIDE_SECONDS = 0.04
+
+        /** How quickly the limiter lets go after a peak. */
+        private const val RELEASE_SECONDS = 0.08
+
+        private const val SETTLED = 1e-4f
+
+        /** Android's bounds, in millibels: at most 15 dB down and 3 dB up. */
+        private const val MIN_GAIN_MB = -1500
+        private const val MAX_GAIN_MB = 300
+
+        /**
+         * The linear gain that levels a track YouTube measured at [loudnessDb], the same sum
+         * Android's `PlaybackService.loudnessGainFor` does; 1 when there is no figure.
+         */
+        fun gainFor(loudnessDb: Double?): Float {
+            val db = loudnessDb ?: return 1f
+            val mb = (-db * 100.0).roundToInt().coerceIn(MIN_GAIN_MB, MAX_GAIN_MB)
+            return 10.0.pow(mb / 2000.0).toFloat()
+        }
     }
 }

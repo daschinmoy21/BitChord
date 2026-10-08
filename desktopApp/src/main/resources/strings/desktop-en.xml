@@ -91,4 +91,5 @@
     <string name="d_translation_unavailable">Translation unavailable</string>
     <string name="d_what_the_translate_button_translates_into">What the translate button on the lyrics translates into</string>
     <string name="d_off">Off</string>
+    <string name="d_loudness_no_figure">On · no level for this track</string>
 </resources>

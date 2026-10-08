@@ -89,4 +89,5 @@
     <string name="d_translation_unavailable">无法翻译</string>
     <string name="d_what_the_translate_button_translates_into">歌词翻译按钮翻译成的语言</string>
     <string name="d_off">关闭</string>
+    <string name="d_loudness_no_figure">开启 · 此曲目无响度数据</string>
 </resources>

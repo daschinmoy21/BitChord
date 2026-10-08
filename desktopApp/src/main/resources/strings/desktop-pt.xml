@@ -89,4 +89,5 @@
     <string name="d_translation_unavailable">Tradução indisponível</string>
     <string name="d_what_the_translate_button_translates_into">Para qual idioma o botão de traduzir da letra traduz</string>
     <string name="d_off">Desligado</string>
+    <string name="d_loudness_no_figure">Ativado · sem nível para esta faixa</string>
 </resources>

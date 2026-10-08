@@ -89,4 +89,5 @@
     <string name="d_translation_unavailable">翻訳を利用できません</string>
     <string name="d_what_the_translate_button_translates_into">歌詞の翻訳ボタンが翻訳する言語</string>
     <string name="d_off">オフ</string>
+    <string name="d_loudness_no_figure">オン · この曲の音量データなし</string>
 </resources>
