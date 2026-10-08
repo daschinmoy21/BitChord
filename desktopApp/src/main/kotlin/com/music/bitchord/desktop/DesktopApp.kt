@@ -7515,13 +7515,13 @@ private fun DesktopZoomSetting() {
             }
             Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.width(6.dp))
-            TextButton(onClick = { DesktopUiScale.select(1f) }, enabled = scale != 1f) {
+            TextButton(onClick = { DesktopUiScale.select(1f) }, enabled = DesktopUiScale.nearestStep(scale) != 1f) {
                 Text(DesktopStrings["d_reset_zoom", "Reset"])
             }
         }
         DesktopBareSlider(
-            value = steps.indexOf(scale).toFloat(),
-            onValueChange = { DesktopUiScale.select(steps[it.roundToInt()]) },
+            value = steps.indexOf(DesktopUiScale.nearestStep(scale)).toFloat(),
+            onValueChange = { DesktopUiScale.select(steps[it.roundToInt().coerceIn(steps.indices)]) },
             valueRange = 0f..steps.lastIndex.toFloat(),
             // Every step between the two ends is a tick the thumb snaps to.
             steps = steps.size - 2,
