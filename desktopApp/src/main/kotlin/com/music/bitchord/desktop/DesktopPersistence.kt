@@ -12,6 +12,8 @@ import java.util.Base64
 import java.util.UUID
 import java.util.prefs.Preferences
 
+internal const val MAX_SPOTIFY_MATCHES = 5000
+
 /** Small OS-backed store for desktop state; no Android Context is required. */
 class DesktopPersistence(
     internal val preferences: Preferences = Preferences.userRoot().node("com.music.bitchord.desktop"),
@@ -97,6 +99,18 @@ class DesktopPersistence(
     fun downloads(): List<Song> = readSongs(KEY_DOWNLOADS)
 
     fun saveDownloads(songs: List<Song>) = writeSongs(KEY_DOWNLOADS, songs)
+
+    /** YouTube Music songs already matched to Spotify track ids, oldest first. */
+    internal fun spotifyMatches(): Map<String, Song> = readLines(KEY_SPOTIFY_MATCHES).mapNotNull { line ->
+        val id = decode(line.substringBefore(DELIMITER)).ifBlank { return@mapNotNull null }
+        decodeSong(line.substringAfter(DELIMITER, ""))?.let { id to it }
+    }.toMap()
+
+    internal fun saveSpotifyMatches(matches: Map<String, Song>) = writeLines(
+        KEY_SPOTIFY_MATCHES,
+        matches.entries.toList().takeLast(MAX_SPOTIFY_MATCHES)
+            .map { (id, song) -> encode(id) + DELIMITER + encodeSong(song, queueFields = false) },
+    )
 
     fun playlists(): List<DesktopPlaylist> = readLines(KEY_PLAYLISTS).mapNotNull(::decodePlaylist)
 
@@ -341,6 +355,7 @@ class DesktopPersistence(
         const val KEY_POSITION = "queue_position"
         const val KEY_DOWNLOADS = "downloads"
         const val KEY_PLAYLISTS = "playlists"
+        const val KEY_SPOTIFY_MATCHES = "spotify_matches"
         const val KEY_MODULE_INDEX_URL = "module_index_url"
         private const val KEY_ORIGINAL_VERSIONS = "original_versions"
         private const val KEY_AUDIO_QUALITY = "audio_quality"
