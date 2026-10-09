@@ -15,6 +15,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.assertFalse
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 
 class DesktopShareCardTest {
     private val songs = (1..7).map { n ->
@@ -85,6 +89,22 @@ class DesktopShareCardTest {
             assertEquals("Artist - Song.png", first.name)
             assertEquals("Artist - Song (2).png", second.name)
             assertEquals(File(root, "BitChord"), second.parentFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `overlapping saves never overwrite another image`() = runBlocking {
+        val root = Files.createTempDirectory("bitchord-share-concurrent").toFile()
+        try {
+            val files = (1..20).map { n ->
+                async(Dispatchers.IO) {
+                    n to DesktopShareFiles.save(byteArrayOf(n.toByte()), "Artist - Song", root)
+                }
+            }.awaitAll()
+            assertEquals(20, files.map { it.second.path }.distinct().size)
+            files.forEach { (n, file) -> assertEquals(n.toByte(), file.readBytes().single()) }
         } finally {
             root.deleteRecursively()
         }

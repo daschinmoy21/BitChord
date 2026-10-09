@@ -68,6 +68,9 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.datatransfer.UnsupportedFlavorException
 import java.io.File
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
@@ -448,11 +451,17 @@ internal object DesktopShareFiles {
     fun save(png: ByteArray, name: String, root: File = picturesDir()): File {
         val folder = File(root, "BitChord").apply { mkdirs() }
         val base = safeName(name)
-        val file = generateSequence(1) { it + 1 }
-            .map { n -> File(folder, if (n == 1) "$base.png" else "$base ($n).png") }
-            .first { !it.exists() }
-        file.writeBytes(png)
-        return file
+        for (n in generateSequence(1) { it + 1 }) {
+            val file = File(folder, if (n == 1) "$base.png" else "$base ($n).png")
+            val output = try {
+                Files.newOutputStream(file.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
+            } catch (_: FileAlreadyExistsException) {
+                continue
+            }
+            output.use { it.write(png) }
+            return file
+        }
+        error("Could not choose an image file name")
     }
 
     /** [name] with what a file name cannot carry on any of the three systems taken out. */
