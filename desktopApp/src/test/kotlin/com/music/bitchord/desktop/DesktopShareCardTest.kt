@@ -14,6 +14,7 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class DesktopShareCardTest {
     private val songs = (1..7).map { n ->
@@ -84,6 +85,33 @@ class DesktopShareCardTest {
             assertEquals("Artist - Song.png", first.name)
             assertEquals("Artist - Song (2).png", second.name)
             assertEquals(File(root, "BitChord"), second.parentFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `clipboard helpers consume bytes and report failures`() {
+        if (!DesktopPlatform.isLinux) return
+        assertTrue(DesktopImageClipboard.pipeTo(listOf("sh", "-c", "cat > /dev/null"), ByteArray(100_000)))
+        assertFalse(DesktopImageClipboard.pipeTo(listOf("sh", "-c", "exit 1"), ByteArray(100_000)))
+    }
+
+    @Test
+    fun `a clipboard helper that never reads stdin is killed on timeout`() {
+        if (!DesktopPlatform.isLinux) return
+        val root = Files.createTempDirectory("bitchord-clipboard").toFile()
+        try {
+            val pidFile = File(root, "pid")
+            val start = System.nanoTime()
+            assertFalse(DesktopImageClipboard.pipeTo(
+                listOf("sh", "-c", "echo $$ > \"\$1\"; exec sleep 60", "sh", pidFile.path),
+                ByteArray(1_000_000), timeoutMs = 1_000,
+            ))
+            assertTrue(System.nanoTime() - start < 5_000_000_000L)
+            val process = ProcessHandle.of(pidFile.readText().trim().toLong())
+            process.ifPresent { it.onExit().get(3, java.util.concurrent.TimeUnit.SECONDS) }
+            assertFalse(process.map { it.isAlive }.orElse(false))
         } finally {
             root.deleteRecursively()
         }

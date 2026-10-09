@@ -70,6 +70,7 @@ import java.awt.datatransfer.UnsupportedFlavorException
 import java.io.File
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 import javax.imageio.ImageIO
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -384,12 +385,14 @@ internal fun DesktopShareCard.renderPng(style: DesktopShareStyle, art: DesktopSh
     val width = with(density) { CardWidth.roundToPx() }
     val height = with(density) { CardHeight.roundToPx() }
     val card = this
-    val image = renderComposeScene(width, height, density) {
+    return renderComposeScene(width, height, density) {
         MaterialTheme(colorScheme = desktopColorScheme(), typography = desktopTypography()) {
             DesktopShareCardContent(card, style, art)
         }
+    }.use { image ->
+        checkNotNull(image.encodeToData(EncodedImageFormat.PNG)) { "Could not encode the image" }
+            .use { it.bytes }
     }
-    return checkNotNull(image.encodeToData(EncodedImageFormat.PNG)) { "Could not encode the image" }.bytes
 }
 
 /** Images on the clipboard, which a window under XWayland cannot always hand to Wayland itself. */
@@ -417,13 +420,25 @@ internal object DesktopImageClipboard {
     }
 
     /** Both tools fork to serve the clipboard; the process started here exits once it has the data. */
-    private fun pipeTo(command: List<String>, bytes: ByteArray): Boolean = runCatching {
+    internal fun pipeTo(command: List<String>, bytes: ByteArray, timeoutMs: Long = 5_000): Boolean = runCatching {
         val process = ProcessBuilder(command)
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
-        process.outputStream.use { it.write(bytes) }
-        process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0
+        // A helper can stop reading stdin, so the timeout must cover the write too.
+        val writer = Executors.newSingleThreadExecutor { task ->
+            Thread(task, "bitchord-image-clipboard").apply { isDaemon = true }
+        }
+        try {
+            val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
+            writer.submit<Unit> { process.outputStream.use { it.write(bytes) } }
+                .get(timeoutMs, TimeUnit.MILLISECONDS)
+            process.waitFor((deadline - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS) &&
+                process.exitValue() == 0
+        } finally {
+            if (process.isAlive) process.destroyForcibly()
+            writer.shutdownNow()
+        }
     }.getOrDefault(false)
 }
 
@@ -449,9 +464,15 @@ internal object DesktopShareFiles {
         if (DesktopPlatform.isLinux) {
             // XDG's answer, which a localised desktop may have moved off "Pictures".
             val xdg = runCatching {
-                val process = ProcessBuilder("xdg-user-dir", "PICTURES").redirectErrorStream(true).start()
-                val out = process.inputStream.bufferedReader().readText().trim()
-                out.takeIf { process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0 }
+                val process = ProcessBuilder("xdg-user-dir", "PICTURES")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD).start()
+                try {
+                    if (process.waitFor(3, TimeUnit.SECONDS) && process.exitValue() == 0) {
+                        process.inputStream.bufferedReader().use { it.readText().trim() }
+                    } else null
+                } finally {
+                    if (process.isAlive) process.destroyForcibly()
+                }
             }.getOrNull()
             // It answers with the home directory itself when Pictures is not set.
             if (!xdg.isNullOrBlank() && File(xdg) != home) return File(xdg)
