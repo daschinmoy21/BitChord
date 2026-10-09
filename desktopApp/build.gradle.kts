@@ -574,3 +574,28 @@ compose.desktop {
     }
 
 }
+
+// jpackage's Linux launcher can crash before starting the JVM when it expands this app's
+// long list of dependency paths. Java expands a classpath wildcard itself; the same bundled
+// jars remain available, with a much shorter argument passed through the native launcher.
+if (targetOs == "linux") {
+    val launcherConfig = layout.buildDirectory.file("compose/binaries/main/app/BitChord/lib/app/BitChord.cfg")
+    tasks.matching { it.name == "createDistributable" }.configureEach {
+        doLast {
+            val config = launcherConfig.get().asFile
+            var classpathWritten = false
+            val lines = config.readLines().mapNotNull { line ->
+                if (!line.startsWith("app.classpath=")) {
+                    line
+                } else if (!classpathWritten) {
+                    classpathWritten = true
+                    "app.classpath=\$APPDIR/*"
+                } else {
+                    null
+                }
+            }
+            check(classpathWritten) { "The packaged Linux launcher has no classpath" }
+            config.writeText(lines.joinToString("\n", postfix = "\n"))
+        }
+    }
+}
