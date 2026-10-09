@@ -1146,10 +1146,9 @@ fun BitChordDesktopApp() {
 
     fun openAlbum(browseId: String) = openCollection(browseId)
 
-    /** Copies the track's YouTube Music link. */
+    /** Opens the share sheet: the song as a story card, and its link. */
     fun shareSong(song: Song) {
-        DesktopExternalLinks.copy("https://music.youtube.com/watch?v=${song.videoId}")
-        DesktopTrackLog.log("copied a link to '${song.title}'")
+        overlays.shareCard = DesktopShareCard.Track(song)
     }
 
     /**
@@ -3530,6 +3529,9 @@ fun BitChordDesktopApp() {
                     if (overlays.shortcuts) {
                         DesktopShortcutsDialog(onDismiss = { overlays.shortcuts = false })
                     }
+                    overlays.shareCard?.let { card ->
+                        DesktopShareCardDialog(card, onDismiss = { overlays.shareCard = null })
+                    }
                     if (overlays.audioOutput) {
                         DesktopAudioOutputDialog(onDismiss = { overlays.audioOutput = false })
                     }
@@ -3853,6 +3855,7 @@ fun BitChordDesktopApp() {
                             onPeriodChange = { replayPeriod = it },
                             onPlaySong = { playSong(it) },
                             onOpenArtist = ::openArtistByName,
+                            onShare = { overlays.shareCard = DesktopShareCard.Replay(replaySummary) },
                             contentPadding = contentPadding,
                         )
                         openedArtist != null -> DesktopArtistPage(
@@ -4141,6 +4144,7 @@ fun BitChordDesktopApp() {
                             downloadInProgress = downloadInProgress,
                             contentPadding = contentPadding,
                             menu = { song -> songMenu(song) },
+                            onShare = { songs -> overlays.shareCard = DesktopShareCard.Recent(songs) },
                         )
                         destination == DesktopDestination.DOWNLOADS -> Box(Modifier.fillMaxSize()) {
                             DesktopDownloadsPage(
@@ -5303,6 +5307,7 @@ private fun DesktopHistoryPage(
     downloadInProgress: Set<String>,
     contentPadding: PaddingValues,
     menu: (@Composable (Song) -> Unit)? = null,
+    onShare: (List<Song>) -> Unit,
 ) {
     DesktopPageScaffold(contentPadding) {
         LazyColumn(
@@ -5310,7 +5315,12 @@ private fun DesktopHistoryPage(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (history.isEmpty()) item { DesktopEmptyPage(BitChordIcons.Clock, "Nothing played yet", "Songs you play will show up here.") }
-            else items(history, key = Song::videoId) {
+            else item("share") {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.End) {
+                    DesktopActionButton(DesktopStrings["share", "Share"], Icons.Rounded.Share, onClick = { onShare(history) })
+                }
+            }
+            if (history.isNotEmpty()) items(history, key = Song::videoId) {
                 DesktopSongRow(
                     song = it,
                     liked = false,

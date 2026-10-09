@@ -26,7 +26,7 @@ fun rememberDesktopArtworkPalette(url: String?): DesktopArtworkPalette {
     return palette
 }
 
-private fun DesktopArtworkPalette.Companion.from(bitmap: ImageBitmap?): DesktopArtworkPalette {
+internal fun DesktopArtworkPalette.Companion.from(bitmap: ImageBitmap?): DesktopArtworkPalette {
     if (bitmap == null || bitmap.width == 0 || bitmap.height == 0) return DesktopArtworkPalette.Default
     val pixels = IntArray(bitmap.width * bitmap.height)
     bitmap.readPixels(pixels)
