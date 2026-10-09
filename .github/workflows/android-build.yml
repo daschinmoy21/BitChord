@@ -19,6 +19,14 @@ on:
         required: false
       KEY_PASSWORD:
         required: false
+      DEV_KEYSTORE_BASE64:
+        required: false
+      DEV_KEYSTORE_PASSWORD:
+        required: false
+      DEV_KEY_ALIAS:
+        required: false
+      DEV_KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
@@ -39,7 +47,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Tests
-        run: ./gradlew :app:testDevDebugUnitTest
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+          ./gradlew :app:testDevDebugUnitTest
       - name: Configure signing
         id: signing
         env:
@@ -47,6 +57,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          DEV_KEYSTORE_BASE64: ${{ secrets.DEV_KEYSTORE_BASE64 }}
+          DEV_KEYSTORE_PASSWORD: ${{ secrets.DEV_KEYSTORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.DEV_KEY_PASSWORD }}
         run: python3 .github/scripts/prepare_android_signing.py
       - name: Build APK
         env:
@@ -61,11 +75,11 @@ jobs:
           VARIANT: ${{ steps.signing.outputs.variant }}
         run: |
           mkdir -p dist
-          if [ "$VARIANT" = ProdRelease ]; then
-            cp app/build/outputs/apk/prod/release/*universal*.apk dist/BitChord-android.apk
-          else
-            cp app/build/outputs/apk/dev/debug/*universal*.apk dist/BitChord-android-dev.apk
-          fi
+          case "$VARIANT" in
+            ProdRelease) cp app/build/outputs/apk/prod/release/*universal*.apk dist/BitChord-android.apk ;;
+            DevRelease) cp app/build/outputs/apk/dev/release/*universal*.apk dist/BitChord-android-dev.apk ;;
+            *) cp app/build/outputs/apk/dev/debug/*universal*.apk dist/BitChord-android-dev.apk ;;
+          esac
       - uses: actions/upload-artifact@v4
         with:
           name: android-artifacts

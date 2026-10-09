@@ -114,7 +114,7 @@ The [rolling main build](https://github.com/daschinmoy21/BitChord/releases/tag/b
 contains the latest successfully packaged main-branch build.
 
 - **Linux:** download `BitChord-linux-x86_64.AppImage`. On NixOS, run it through `appimage-run`; see [DESKTOP.md](DESKTOP.md).
-- **Android:** download `BitChord-android-dev.apk`, an installable universal **BitChord Dev** build. It uses `com.dev.bitchord`, so it can coexist with the upstream production app. Enable “Install unknown apps” for the app you download it with.
+- **Android:** download `BitChord-android-dev.apk`, an installable universal **BitChord Dev** build. It uses `com.dev.bitchord`, so it can coexist with the upstream production app. Enable “Install unknown apps” for the app you download it with. Tagged releases are signed with this fork's own key, and the app offers them as in-app updates; a build installed before that key existed has to be uninstalled once first.
 - **Windows and versioned Linux packages:** see [DESKTOP.md](DESKTOP.md) for the artifacts produced by the versioned release workflow.
 
 These are builds of this fork. The [upstream releases](https://github.com/kushagrasinghx/BitChord/releases)

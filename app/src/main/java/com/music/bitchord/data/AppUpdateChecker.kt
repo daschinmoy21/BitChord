@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -22,8 +24,8 @@ import java.io.File
 /**
  * BitChord ships as a sideloaded APK off GitHub Releases rather than through
  * a store, so there's nothing to push an update notice on its own — this
- * polls the repo's "latest release" once per launch and compares its tag
- * against the running build.
+ * reads this fork's releases once per launch and compares the newest
+ * versioned tag against the running build.
  *
  * The update itself is also handled here: the release's `.apk` asset is
  * downloaded into the app's cache and handed to the system package installer,
@@ -42,8 +44,24 @@ object AppUpdateChecker {
 
     private const val CACHE_SUBDIR = "updates"
 
-    private const val LATEST_RELEASE_URL =
-        "https://api.github.com/repos/kushagrasinghx/BitChord/releases/latest"
+    /**
+     * The repository whose releases this build is offered. It must be this
+     * fork: upstream's APK is a different package signed with a different key,
+     * so it would install beside this build rather than update it. The list is
+     * read rather than "latest" so a release marked pre-release is still seen;
+     * the rolling `build-*` pre-releases carry no version and are never offered.
+     */
+    private const val REPOSITORY = "daschinmoy21/BitChord"
+
+    private const val RELEASES_URL = "https://api.github.com/repos/$REPOSITORY/releases?per_page=100"
+
+    /**
+     * The release asset this build updates from, matched by name because a
+     * release carries both. The fork ships the dev flavour (`com.dev.bitchord`),
+     * which only `BitChord-android-dev.apk` can update; see
+     * .github/workflows/android-build.yml.
+     */
+    private val APK_ASSET = if (BuildConfig.FLAVOR == "dev") "BitChord-android-dev.apk" else "BitChord-android.apk"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -67,20 +85,40 @@ object AppUpdateChecker {
 
     suspend fun check() = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder().url(LATEST_RELEASE_URL).build()
+            val request = Request.Builder()
+                .url(RELEASES_URL)
+                .header("Accept", "application/vnd.github+json")
+                .build()
             val body = Http.client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) null else response.body?.string()
             } ?: return@runCatching
-            val release = json.parseToJsonElement(body) as? JsonObject ?: return@runCatching
-            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val url = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return@runCatching
-            val apkUrl = apkAssetUrl(release)
-            val notes = release["body"]?.jsonPrimitive?.contentOrNull
-            val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
-                _available.value = UpdateInfo(latest, url, apkUrl, notes)
-            }
+            newerRelease(body, BuildConfig.VERSION_NAME, APK_ASSET)?.let { _available.value = it }
         }
+    }
+
+    /**
+     * The newest versioned, non-draft release in [releasesJson] that is newer
+     * than [current], or null when there is none. Tags that are not versions
+     * are skipped rather than guessed at.
+     */
+    internal fun newerRelease(releasesJson: String, current: String, apkAsset: String): UpdateInfo? {
+        val releases = json.parseToJsonElement(releasesJson) as? JsonArray ?: return null
+        val newest = releases.mapNotNull { element ->
+            val release = element as? JsonObject ?: return@mapNotNull null
+            if (release["draft"]?.jsonPrimitive?.booleanOrNull == true) return@mapNotNull null
+            val tag = release["tag_name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val version = Version.parse(tag) ?: return@mapNotNull null
+            Triple(release, tag, version)
+        }.maxByOrNull { it.third } ?: return null
+        val (release, tag, _) = newest
+        val latest = tag.removePrefix("v")
+        if (!isNewer(latest, current)) return null
+        return UpdateInfo(
+            version = latest,
+            releaseUrl = release["html_url"]?.jsonPrimitive?.contentOrNull ?: return null,
+            apkUrl = apkAssetUrl(release, apkAsset),
+            notes = release["body"]?.jsonPrimitive?.contentOrNull,
+        )
     }
 
     /**
@@ -94,16 +132,15 @@ object AppUpdateChecker {
     }
 
     /**
-     * The release usually carries exactly one `.apk`; take its direct download
-     * URL. A release without one (source-only draft, renamed asset) leaves
-     * [UpdateInfo.apkUrl] null and the UI falls back to opening the releases
-     * page as before.
+     * The direct download URL of [name] in the release. A release without it
+     * (source-only draft, renamed asset) leaves [UpdateInfo.apkUrl] null and
+     * the UI falls back to opening the releases page as before.
      */
-    private fun apkAssetUrl(release: JsonObject): String? = runCatching {
+    private fun apkAssetUrl(release: JsonObject, name: String): String? = runCatching {
         release["assets"]?.jsonArray
             ?.mapNotNull { it as? JsonObject }
             ?.firstOrNull { asset ->
-                asset["name"]?.jsonPrimitive?.contentOrNull?.endsWith(".apk", ignoreCase = true) == true &&
+                asset["name"]?.jsonPrimitive?.contentOrNull.equals(name, ignoreCase = true) &&
                     asset["state"]?.jsonPrimitive?.contentOrNull == "uploaded"
             }
             ?.get("browser_download_url")
@@ -207,31 +244,50 @@ object AppUpdateChecker {
         )
     }
 
-    /** A version split into its numeric dotted parts and whether it carries a "-suffix" (e.g. "-beta2"). */
-    private data class ParsedVersion(val parts: List<Int>, val isPreRelease: Boolean)
-
-    private fun parseVersion(raw: String): ParsedVersion {
-        val dash = raw.indexOf('-')
-        val base = if (dash >= 0) raw.substring(0, dash) else raw
-        return ParsedVersion(base.split(".").map { it.toIntOrNull() ?: 0 }, dash >= 0)
+    /** Whether [latest] is a strictly newer version than [current]. Anything unparseable is not. */
+    internal fun isNewer(latest: String, current: String): Boolean {
+        val l = Version.parse(latest) ?: return false
+        val c = Version.parse(current) ?: return false
+        return l > c
     }
 
     /**
-     * Numeric, dot-separated comparison — "1.10" outranks "1.9" — with one
-     * extra rule: a "-betaN" build (see the debug build type's
-     * `versionNameSuffix` in app/build.gradle.kts) is treated as older than a
-     * plain release of the same numbers, since the beta by definition predates
-     * the tag it was testing toward. Without this, a beta and the release it
-     * matches compare equal and testers never get nudged onto the real build.
+     * A version as this project writes them: `1.8`, `v1.8`, the fork's
+     * `1.9.0-fork.N`, or a `-betaN` build (see the build types' `versionNameSuffix`
+     * in app/build.gradle.kts). Numbers compare as numbers, so 1.10 is newer
+     * than 1.9. At the same base a beta comes before the plain release, since
+     * it predates the tag it was testing toward, and a fork build comes after
+     * it, because it is that release with this fork's changes on top. Fork
+     * builds compare by their N. Mirrors the desktop's DesktopUpdateChecker.
      */
-    private fun isNewer(latest: String, current: String): Boolean {
-        val l = parseVersion(latest)
-        val c = parseVersion(current)
-        for (i in 0 until maxOf(l.parts.size, c.parts.size)) {
-            val a = l.parts.getOrElse(i) { 0 }
-            val b = c.parts.getOrElse(i) { 0 }
-            if (a != b) return a > b
+    private class Version(val parts: List<Int>, val stage: Int, val build: Int) : Comparable<Version> {
+
+        override fun compareTo(other: Version): Int {
+            for (i in 0 until maxOf(parts.size, other.parts.size)) {
+                val diff = parts.getOrElse(i) { 0 }.compareTo(other.parts.getOrElse(i) { 0 })
+                if (diff != 0) return diff
+            }
+            return compareValuesBy(this, other, { it.stage }, { it.build })
         }
-        return c.isPreRelease && !l.isPreRelease
+
+        companion object {
+            private const val BETA = 0
+            private const val PLAIN = 1
+            private const val FORK = 2
+
+            private val pattern = Regex("""v?(\d+(?:\.\d+)*)(?:-(beta|fork)\.?(\d+))?""")
+
+            fun parse(raw: String): Version? {
+                val match = pattern.matchEntire(raw.trim()) ?: return null
+                val parts = match.groupValues[1].split('.').map { it.toIntOrNull() ?: return null }
+                val stage = when (match.groupValues[2]) {
+                    "" -> PLAIN
+                    "fork" -> FORK
+                    else -> BETA
+                }
+                val build = match.groupValues[3].toIntOrNull() ?: 0
+                return Version(parts, stage, build)
+            }
+        }
     }
 }
