@@ -47,7 +47,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Tests
-        run: ./gradlew :app:testDevDebugUnitTest
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+          ./gradlew :app:testDevDebugUnitTest
       - name: Configure signing
         id: signing
         env:
