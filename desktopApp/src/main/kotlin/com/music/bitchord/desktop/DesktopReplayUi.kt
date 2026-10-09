@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Schedule
@@ -78,6 +79,7 @@ internal fun DesktopReplayPage(
     onPeriodChange: (DesktopReplayPeriod) -> Unit,
     onPlaySong: (Song) -> Unit,
     onOpenArtist: (String) -> Unit,
+    onShare: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     // The mesh behind this page is painted by the frame, so the chrome is tinted by it too.
@@ -102,7 +104,11 @@ internal fun DesktopReplayPage(
                             color = Color.White.copy(alpha = 0.6f),
                         )
                         Spacer(Modifier.height(14.dp))
-                        PeriodPicker(period, onPeriodChange)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PeriodPicker(period, onPeriodChange)
+                            Spacer(Modifier.weight(1f))
+                            if (!summary.isEmpty) ShareReplayButton(onShare)
+                        }
                         Spacer(Modifier.height(18.dp))
                     }
                 }
@@ -153,6 +159,27 @@ internal fun DesktopReplayPage(
             item("habits") { Habits(summary) }
             item("tail") { Spacer(Modifier.height(32.dp)) }
         }
+    }
+}
+
+@Composable
+private fun ShareReplayButton(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.Share, null, tint = Color.White, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            DesktopStrings["share", "Share"],
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.W700,
+            color = Color.White,
+        )
     }
 }
 

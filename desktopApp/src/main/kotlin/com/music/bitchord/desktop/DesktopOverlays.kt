@@ -29,6 +29,9 @@ internal class DesktopOverlays {
     var songMenu by mutableStateOf(false)
     var downloadManager by mutableStateOf(false)
     var replay by mutableStateOf(false)
+
+    /** The share sheet and the card it is making, or none. */
+    var shareCard by mutableStateOf<DesktopShareCard?>(null)
     var playlistDialog by mutableStateOf(false)
     var rename by mutableStateOf(false)
     var delete by mutableStateOf(false)
