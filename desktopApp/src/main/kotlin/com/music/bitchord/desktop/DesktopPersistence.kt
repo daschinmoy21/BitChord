@@ -98,6 +98,18 @@ class DesktopPersistence(
 
     fun saveDownloads(songs: List<Song>) = writeSongs(KEY_DOWNLOADS, songs)
 
+    /** YouTube Music songs already matched to Spotify track ids, oldest first. */
+    internal fun spotifyMatches(): Map<String, Song> = readLines(KEY_SPOTIFY_MATCHES).mapNotNull { line ->
+        val id = decode(line.substringBefore(DELIMITER)).ifBlank { return@mapNotNull null }
+        decodeSong(line.substringAfter(DELIMITER, ""))?.let { id to it }
+    }.toMap()
+
+    internal fun saveSpotifyMatches(matches: Map<String, Song>) = writeLines(
+        KEY_SPOTIFY_MATCHES,
+        matches.entries.toList().takeLast(MAX_SPOTIFY_MATCHES)
+            .map { (id, song) -> encode(id) + DELIMITER + encodeSong(song, queueFields = false) },
+    )
+
     fun playlists(): List<DesktopPlaylist> = readLines(KEY_PLAYLISTS).mapNotNull(::decodePlaylist)
 
     fun savePlaylists(playlists: List<DesktopPlaylist>) = writeLines(KEY_PLAYLISTS, playlists.map(DesktopPlaylist::toPreferenceLine))
@@ -341,6 +353,7 @@ class DesktopPersistence(
         const val KEY_POSITION = "queue_position"
         const val KEY_DOWNLOADS = "downloads"
         const val KEY_PLAYLISTS = "playlists"
+        const val KEY_SPOTIFY_MATCHES = "spotify_matches"
         const val KEY_MODULE_INDEX_URL = "module_index_url"
         private const val KEY_ORIGINAL_VERSIONS = "original_versions"
         private const val KEY_AUDIO_QUALITY = "audio_quality"
@@ -349,6 +362,7 @@ class DesktopPersistence(
         const val KEY_SOURCE_CONFIGS_PROTECTED = "source_configs_dpapi_v1"
         const val MAX_HISTORY = 100
         const val MAX_QUEUE = 200
+        const val MAX_SPOTIFY_MATCHES = 5000
         const val DELIMITER = "|"
         const val PLAYLIST_DELIMITER = "#"
         const val SONG_DELIMITER = ";"

@@ -14,10 +14,39 @@ import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.spotify.SpotifyImporter
 import com.music.bitchord.data.spotify.SpotifyPlaylist
 import com.music.bitchord.data.spotify.SpotifyTrack
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
+
+/**
+ * Spotify track id → its YouTube Music match. It outlives the page and is saved to disk, so a
+ * playlist is matched once rather than each time it is played; misses are not kept and are
+ * retried.
+ */
+internal class DesktopSpotifyMatches(private val persistence: DesktopPersistence) {
+    private val matches by lazy { LinkedHashMap(persistence.spotifyMatches()) }
+
+    suspend fun get(trackId: String): Song? =
+        withContext(Dispatchers.IO) { synchronized(this@DesktopSpotifyMatches) { matches[trackId] } }
+
+    /** Records [found], most recent last, and writes the whole cache back. */
+    suspend fun saveAll(found: Map<String, Song>) {
+        if (found.isEmpty()) return
+        val snapshot = synchronized(this) {
+            found.forEach { (id, song) -> matches.remove(id); matches[id] = song }
+            LinkedHashMap(matches)
+        }
+        withContext(Dispatchers.IO) { persistence.saveSpotifyMatches(snapshot) }
+    }
+
+    companion object {
+        val shared by lazy { DesktopSpotifyMatches(DesktopPersistence()) }
+    }
+}
 
 /** Browsing stays as Spotify metadata; matching happens only for playback or a local import. */
 @Composable
@@ -39,7 +68,6 @@ internal fun DesktopSpotifyPage(
     var link by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var actionJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val matchCache = remember(connected) { mutableMapOf<String, Song>() }
 
     LaunchedEffect(connected, selected?.id, refresh) {
         if (!connected) return@LaunchedEffect
@@ -62,12 +90,14 @@ internal fun DesktopSpotifyPage(
         resolving = true
         error = null
         actionJob = scope.launch {
+            val matched = mutableMapOf<String, Song>()
             try {
                 val songs = mutableListOf<Song>()
                 sourceTracks.forEachIndexed { index, track ->
                     currentCoroutineContext().ensureActive()
                     progress = "Matching ${index + 1} of ${sourceTracks.size}…"
-                    val song = matchCache[track.id] ?: SpotifyImporter.matchTrack(track)?.also { matchCache[track.id] = it }
+                    val song = DesktopSpotifyMatches.shared.get(track.id)
+                        ?: SpotifyImporter.matchTrack(track)?.also { matched[track.id] = it }
                     if (song != null) songs += song
                 }
                 val missed = sourceTracks.size - songs.size
@@ -79,7 +109,11 @@ internal fun DesktopSpotifyPage(
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { error = failure.message ?: "Could not match Spotify tracks" }
-            finally { resolving = false }
+            finally {
+                resolving = false
+                // A cancelled run still keeps the tracks it got through.
+                withContext(NonCancellable) { DesktopSpotifyMatches.shared.saveAll(matched) }
+            }
         }
     }
 
