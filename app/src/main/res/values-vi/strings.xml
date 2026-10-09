@@ -1205,4 +1205,12 @@
     <string name="spotify_library_subtitle">Danh sách phát Spotify của bạn</string>
     <string name="spotify_sign_in">Đăng nhập bằng Spotify</string>
     <string name="spotify_track_unavailable">Không tìm thấy bài hát đó trên YouTube Music</string>
+    <string name="story_share_title">Chia sẻ tin</string>
+    <string name="story_share_description">Chọn nền, rồi lưu hoặc chia sẻ thẻ của bạn.</string>
+    <string name="story_style_artwork">Ảnh bìa</string>
+    <string name="story_style_colour">Màu</string>
+    <string name="story_style_dark">Tối</string>
+    <string name="story_recent_title">Đã phát gần đây</string>
+    <string name="story_share_link">Chia sẻ liên kết</string>
+    <string name="story_export_error">Không thể lưu hoặc chia sẻ ảnh. Hãy thử lại.</string>
 </resources>

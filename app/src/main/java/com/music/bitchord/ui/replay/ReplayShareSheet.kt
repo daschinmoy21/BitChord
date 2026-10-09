@@ -3,6 +3,7 @@ package com.music.bitchord.ui.replay
 import com.music.bitchord.R
 
 import android.content.ContentValues
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -266,6 +267,7 @@ internal fun ShareAction(
 internal fun sendIntent(uri: Uri) = Intent(Intent.ACTION_SEND)
     .setType(MIME)
     .putExtra(Intent.EXTRA_STREAM, uri)
+    .apply { clipData = ClipData.newRawUri("image", uri) }
     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
 /**
@@ -289,7 +291,7 @@ internal suspend fun cacheForSharing(
         // One name, overwritten: the folder is a hand-off point, not an album,
         // and a file per share would accumulate megabytes nobody ever looks at.
         val file = File(folder, fileName)
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        FileOutputStream(file).use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     }.getOrNull()
 }
@@ -310,11 +312,13 @@ internal suspend fun saveToGallery(
     prefix: String = "bitchord-replay",
 ): Boolean = withContext(Dispatchers.IO) {
     val name = "$prefix-${label.replace(' ', '-').lowercase(Locale.ROOT)}.png"
+    var inserted: Uri? = null
     runCatching {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, MIME)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.IS_PENDING, 1)
                 put(
                     MediaStore.Images.Media.RELATIVE_PATH,
                     "${Environment.DIRECTORY_PICTURES}/BitChord",
@@ -324,10 +328,17 @@ internal suspend fun saveToGallery(
         val uri = context.contentResolver
             .insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
             ?: error("no row")
+        inserted = uri
         context.contentResolver.openOutputStream(uri)?.use {
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
         } ?: error("no stream")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val published = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+            check(context.contentResolver.update(uri, published, null, null) > 0)
+        }
         true
+    }.onFailure {
+        inserted?.let { uri -> runCatching { context.contentResolver.delete(uri, null, null) } }
     }.getOrDefault(false)
 }
 

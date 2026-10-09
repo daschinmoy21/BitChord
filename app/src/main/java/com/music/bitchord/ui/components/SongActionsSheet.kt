@@ -354,10 +354,9 @@ fun SongActionsSheet(
                 onClick = it,
             )
         }
-        if (!isOffline) {
-            onShare?.let {
-                ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
-            }
+        // Every track can become an image card, including local files and downloads.
+        onShare?.let {
+            ActionRow(Icons.Rounded.Share, stringResource(R.string.share), accent = palette.accent, onClick = it)
         }
         // Last, and only from the player: it is about the track playing right
         // now rather than about the song as a thing in a library, and it is

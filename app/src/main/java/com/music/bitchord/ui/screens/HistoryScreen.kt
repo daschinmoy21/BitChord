@@ -3,12 +3,19 @@ package com.music.bitchord.ui.screens
 import com.music.bitchord.R
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -45,6 +52,7 @@ fun HistoryScreen(
     currentSong: Song? = null,
     isPlaying: Boolean = false,
     modifier: Modifier = Modifier,
+    onShare: ((List<Song>) -> Unit)? = null,
 ) {
     LazyColumn(
         state = listState,
@@ -64,6 +72,15 @@ fun HistoryScreen(
 
             is UiState.Success -> {
                 val songs = state.data
+                if (songs.isNotEmpty() && onShare != null) {
+                    item(key = "history:share") {
+                        TextButton(onClick = { onShare(songs) }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                            Icon(Icons.Rounded.Share, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.story_share_title))
+                        }
+                    }
+                }
                 // The videoId alone is not a key here: the feed is deduplicated
                 // on it, but a list keyed on something that could repeat is one
                 // bad response away from a crash. The index makes it total.

@@ -80,7 +80,7 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 26
+        versionCode = 27
         versionName = providers.gradleProperty("bitchord.version").orElse("1.8").get().removePrefix("v")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -207,6 +207,7 @@ android {
     }
     testOptions {
         unitTests {
+            isIncludeAndroidResources = true
             // Unit tests run against a stub android.jar whose methods throw
             // rather than return. That is the right default for anything whose
             // behaviour depends on the framework, and wrong for android.util.Log
@@ -399,6 +400,7 @@ dependencies {
     implementation("androidx.mediarouter:mediarouter:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     // A real HTTP server for the addon tests. The addon protocol is entirely
     // "what does this app send, and what does it do with what comes back", and
     // a hand-rolled fake of the client would be a test of the fake. Pinned to

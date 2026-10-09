@@ -1293,4 +1293,12 @@
     <string name="spotify_library_subtitle">הפלייליסטים שלכם ב-Spotify</string>
     <string name="spotify_sign_in">התחברות עם Spotify</string>
     <string name="spotify_track_unavailable">לא נמצא שיר כזה ב-YouTube Music</string>
+    <string name="story_share_title">שיתוף סטורי</string>
+    <string name="story_share_description">בחרו רקע, ואז שמרו או שתפו את הכרטיס.</string>
+    <string name="story_style_artwork">עטיפה</string>
+    <string name="story_style_colour">צבע</string>
+    <string name="story_style_dark">כהה</string>
+    <string name="story_recent_title">הושמעו לאחרונה</string>
+    <string name="story_share_link">שיתוף קישור</string>
+    <string name="story_export_error">לא ניתן לשמור או לשתף את התמונה. נסו שוב.</string>
 </resources>

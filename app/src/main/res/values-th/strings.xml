@@ -1271,4 +1271,12 @@
     <string name="spotify_library_subtitle">เพลย์ลิสต์ Spotify ของคุณ</string>
     <string name="spotify_sign_in">ลงชื่อเข้าใช้ด้วย Spotify</string>
     <string name="spotify_track_unavailable">หาเพลงนั้นบน YouTube Music ไม่พบ</string>
+    <string name="story_share_title">แชร์สตอรี่</string>
+    <string name="story_share_description">เลือกพื้นหลัง แล้วบันทึกหรือแชร์การ์ดของคุณ</string>
+    <string name="story_style_artwork">ปก</string>
+    <string name="story_style_colour">สี</string>
+    <string name="story_style_dark">มืด</string>
+    <string name="story_recent_title">เล่นล่าสุด</string>
+    <string name="story_share_link">แชร์ลิงก์</string>
+    <string name="story_export_error">ไม่สามารถบันทึกหรือแชร์รูปภาพได้ โปรดลองอีกครั้ง</string>
 </resources>

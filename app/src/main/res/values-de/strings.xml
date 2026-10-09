@@ -1288,4 +1288,12 @@
     <string name="spotify_library_subtitle">Deine Spotify-Playlists</string>
     <string name="spotify_sign_in">Bei Spotify anmelden</string>
     <string name="spotify_track_unavailable">Diesen Titel gab es nicht auf YouTube Music</string>
+    <string name="story_share_title">Story teilen</string>
+    <string name="story_share_description">Wähle einen Hintergrund und speichere oder teile deine Karte.</string>
+    <string name="story_style_artwork">Cover</string>
+    <string name="story_style_colour">Farbe</string>
+    <string name="story_style_dark">Dunkel</string>
+    <string name="story_recent_title">Zuletzt gespielt</string>
+    <string name="story_share_link">Link teilen</string>
+    <string name="story_export_error">Das Bild konnte nicht gespeichert oder geteilt werden. Versuche es erneut.</string>
 </resources>

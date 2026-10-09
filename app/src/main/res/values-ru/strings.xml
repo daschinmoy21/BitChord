@@ -1320,4 +1320,12 @@
     <string name="spotify_library_subtitle">Ваши плейлисты Spotify</string>
     <string name="spotify_sign_in">Войти через Spotify</string>
     <string name="spotify_track_unavailable">Не удалось найти этот трек на YouTube Music</string>
+    <string name="story_share_title">Поделиться историей</string>
+    <string name="story_share_description">Выберите фон, затем сохраните карточку или поделитесь ею.</string>
+    <string name="story_style_artwork">Обложка</string>
+    <string name="story_style_colour">Цвет</string>
+    <string name="story_style_dark">Тёмный</string>
+    <string name="story_recent_title">Недавно прослушанное</string>
+    <string name="story_share_link">Поделиться ссылкой</string>
+    <string name="story_export_error">Не удалось сохранить изображение или поделиться им. Попробуйте ещё раз.</string>
 </resources>

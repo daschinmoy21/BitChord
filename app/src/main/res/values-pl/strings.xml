@@ -1328,4 +1328,12 @@
     <string name="spotify_library_subtitle">Twoje playlisty Spotify</string>
     <string name="spotify_sign_in">Zaloguj się przez Spotify</string>
     <string name="spotify_track_unavailable">Nie znaleziono tego utworu w YouTube Music</string>
+    <string name="story_share_title">Udostępnij relację</string>
+    <string name="story_share_description">Wybierz tło, a następnie zapisz lub udostępnij kartę.</string>
+    <string name="story_style_artwork">Okładka</string>
+    <string name="story_style_colour">Kolor</string>
+    <string name="story_style_dark">Ciemny</string>
+    <string name="story_recent_title">Ostatnio odtwarzane</string>
+    <string name="story_share_link">Udostępnij link</string>
+    <string name="story_export_error">Nie udało się zapisać lub udostępnić obrazu. Spróbuj ponownie.</string>
 </resources>

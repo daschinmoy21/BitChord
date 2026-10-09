@@ -1266,4 +1266,12 @@
     <string name="spotify_library_subtitle">あなたの Spotify プレイリスト</string>
     <string name="spotify_sign_in">Spotify でサインイン</string>
     <string name="spotify_track_unavailable">その曲は YouTube Music で見つかりません</string>
+    <string name="story_share_title">ストーリーを共有</string>
+    <string name="story_share_description">背景を選び、カードを保存または共有します。</string>
+    <string name="story_style_artwork">ジャケット</string>
+    <string name="story_style_colour">カラー</string>
+    <string name="story_style_dark">ダーク</string>
+    <string name="story_recent_title">最近再生した曲</string>
+    <string name="story_share_link">リンクを共有</string>
+    <string name="story_export_error">画像を保存または共有できませんでした。もう一度お試しください。</string>
 </resources>

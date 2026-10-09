@@ -37,6 +37,7 @@ The work here includes:
 - Interface zoom controls with a percentage indicator and an Appearance slider.
 - Restoring the last song paused at its saved position, more readable player stats, and clickable album artist credits.
 - Desktop playback fixes and update checks that follow this fork's releases.
+- Story cards for songs, Replay, and recently played tracks on Android and desktop.
 
 I plan to upstream selected fixes and generally useful UX improvements once they have settled.
 The original app, its branding, and much of its functionality are the work of the
@@ -119,6 +120,13 @@ contains the latest successfully packaged main-branch build.
 
 These are builds of this fork. The [upstream releases](https://github.com/kushagrasinghx/BitChord/releases)
 remain available for the original project.
+
+### Sharing story cards
+
+On Android, long-press a song or open its **⋮** menu and choose **Share**. In **History**, tap
+**Share story**; in **Replay**, choose **Share my Replay**. Pick **Artwork**, **Colour**, or **Dark**,
+then **Save** the card to your gallery or **Share** it through Android's share sheet. Cards are
+1080 × 1920 PNGs without app branding. Song cards also offer **Share link**.
 
 </div>
 

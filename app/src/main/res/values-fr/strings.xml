@@ -1289,4 +1289,12 @@
     <string name="spotify_library_subtitle">Vos playlists Spotify</string>
     <string name="spotify_sign_in">Se connecter avec Spotify</string>
     <string name="spotify_track_unavailable">Impossible de trouver ce titre sur YouTube Music</string>
+    <string name="story_share_title">Partager une story</string>
+    <string name="story_share_description">Choisissez un fond, puis enregistrez ou partagez votre carte.</string>
+    <string name="story_style_artwork">Pochette</string>
+    <string name="story_style_colour">Couleur</string>
+    <string name="story_style_dark">Sombre</string>
+    <string name="story_recent_title">Écoutés récemment</string>
+    <string name="story_share_link">Partager le lien</string>
+    <string name="story_export_error">Impossible d’enregistrer ou de partager l’image. Réessayez.</string>
 </resources>

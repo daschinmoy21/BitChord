@@ -296,6 +296,8 @@ import com.music.bitchord.data.settings.SongSort
 import com.music.bitchord.ui.replay.ReplayScreen
 import com.music.bitchord.ui.replay.cards
 import com.music.bitchord.ui.replay.ReplayShareSheet
+import com.music.bitchord.ui.share.StoryCard
+import com.music.bitchord.ui.share.StoryShareSheet
 import com.music.bitchord.ui.replay.ReplayStories
 import com.music.bitchord.ui.replay.ReplayStoryPage
 import com.music.bitchord.ui.replay.rememberReplayState
@@ -543,6 +545,7 @@ private fun BitChordApp(
     var replayLandingPage by rememberSaveable { mutableStateOf(ReplayStoryPage.INTRO) }
     var replayStory by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
     var showReplayShare by rememberSaveable { mutableStateOf(false) }
+    var storyShare by remember { mutableStateOf<StoryCard?>(null) }
     /** Which story card the share sheet is for, or null for the whole Replay. */
     var replaySharePage by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
     // Track which sub-screen was opened from Settings so AnimatedContent keeps
@@ -728,6 +731,7 @@ private fun BitChordApp(
         showReplay = false
         replayStory = null
         showReplayShare = false
+        storyShare = null
         showAccountScrobbling = false
         showSources = false
         showEqualizer = false
@@ -2636,6 +2640,7 @@ private fun BitChordApp(
                             onSongLongPress = openSongMenu,
                             onSongSwipe = onSongSwipe,
                             onRetry = viewModel::loadHistory,
+                            onShare = { songs -> storyShare = StoryCard.Recent(songs.toList()) },
                             contentPadding = listPadding,
                         )
                     } else if (key == "library_show_all") {
@@ -3995,14 +4000,29 @@ private fun BitChordApp(
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                     containerColor = MaterialTheme.colorScheme.background,
                 ) {
-                    ReplayShareSheet(
-                        summary = summary,
-                        holder = account?.name.orEmpty(),
-                        memberSince = replay.memberSince,
-                        page = replaySharePage,
-                        onDismiss = { showReplayShare = false },
-                    )
+                    if (replaySharePage == null) {
+                        val card = remember { StoryCard.Replay(summary) }
+                        StoryShareSheet(card, onDismiss = { showReplayShare = false })
+                    } else {
+                        ReplayShareSheet(
+                            summary = summary,
+                            holder = account?.name.orEmpty(),
+                            memberSince = replay.memberSince,
+                            page = replaySharePage,
+                            onDismiss = { showReplayShare = false },
+                        )
+                    }
                 }
+            }
+        }
+
+        storyShare?.let { card ->
+            ModalBottomSheet(
+                onDismissRequest = { storyShare = null },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                StoryShareSheet(card, onDismiss = { storyShare = null })
             }
         }
 
@@ -4017,12 +4037,8 @@ private fun BitChordApp(
             // tablet the player is visible whatever the menu was opened from.
             val fromPlayer = menuFromPlayer
             val share: () -> Unit = {
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.videoId}")
-                }
-                context.startActivity(Intent.createChooser(sendIntent, song.title))
                 songActions = null
+                storyShare = StoryCard.Track(song)
             }
             // Navigating has to take the player down with the sheet, or the
             // page it opens lands behind a still-covering player.
@@ -4266,11 +4282,8 @@ private fun BitChordApp(
                 upgradeQualityInProgress = fromPlayer && song.videoId in qualityUpgradesInFlight,
                 onToggleAudioVersion = onToggleVersion,
                 isAudioVersion = menuIsAudioVersion,
-                // Hidden outright when there's no real YouTube id behind
-                // this row to build a link from — SongActionsSheet already
-                // drops it for a local file via `isOffline`, this catches
-                // the rest.
-                onShare = share.takeIf { song.videoId.isNotBlank() },
+                // Local tracks can share a card too; the sheet offers a link only for YouTube ids.
+                onShare = share,
                 onCopyLog = if (fromPlayer) {
                     {
                         songActions = null

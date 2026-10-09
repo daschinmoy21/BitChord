@@ -1227,4 +1227,12 @@
     <string name="spotify_library_subtitle">Le tue playlist Spotify</string>
     <string name="spotify_sign_in">Accedi con Spotify</string>
     <string name="spotify_track_unavailable">Impossibile trovare quel brano su YouTube Music</string>
+    <string name="story_share_title">Condividi storia</string>
+    <string name="story_share_description">Scegli uno sfondo, poi salva o condividi la tua scheda.</string>
+    <string name="story_style_artwork">Copertina</string>
+    <string name="story_style_colour">Colore</string>
+    <string name="story_style_dark">Scuro</string>
+    <string name="story_recent_title">Ascoltati di recente</string>
+    <string name="story_share_link">Condividi link</string>
+    <string name="story_export_error">Impossibile salvare o condividere l’immagine. Riprova.</string>
 </resources>

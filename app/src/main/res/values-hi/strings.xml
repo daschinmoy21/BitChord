@@ -1288,4 +1288,12 @@
     <string name="spotify_library_subtitle">आपकी Spotify प्लेलिस्ट</string>
     <string name="spotify_sign_in">Spotify से साइन इन करें</string>
     <string name="spotify_track_unavailable">वह गाना YouTube Music पर नहीं मिला</string>
+    <string name="story_share_title">स्टोरी साझा करें</string>
+    <string name="story_share_description">पृष्ठभूमि चुनें, फिर अपना कार्ड सहेजें या साझा करें।</string>
+    <string name="story_style_artwork">कवर</string>
+    <string name="story_style_colour">रंग</string>
+    <string name="story_style_dark">गहरा</string>
+    <string name="story_recent_title">हाल ही में सुने गए</string>
+    <string name="story_share_link">लिंक साझा करें</string>
+    <string name="story_export_error">चित्र सहेजा या साझा नहीं किया जा सका। फिर से कोशिश करें।</string>
 </resources>

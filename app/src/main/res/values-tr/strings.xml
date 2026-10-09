@@ -1245,4 +1245,12 @@
     <string name="spotify_library_subtitle">Spotify çalma listeleriniz</string>
     <string name="spotify_sign_in">Spotify ile oturum aç</string>
     <string name="spotify_track_unavailable">O şarkı YouTube Music’de bulunamadı</string>
+    <string name="story_share_title">Hikaye paylaş</string>
+    <string name="story_share_description">Bir arka plan seçin, ardından kartınızı kaydedin veya paylaşın.</string>
+    <string name="story_style_artwork">Kapak</string>
+    <string name="story_style_colour">Renk</string>
+    <string name="story_style_dark">Koyu</string>
+    <string name="story_recent_title">Son çalınanlar</string>
+    <string name="story_share_link">Bağlantı paylaş</string>
+    <string name="story_export_error">Görsel kaydedilemedi veya paylaşılamadı. Tekrar deneyin.</string>
 </resources>
