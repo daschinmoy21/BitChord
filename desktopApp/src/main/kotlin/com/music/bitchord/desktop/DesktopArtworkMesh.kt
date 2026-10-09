@@ -1,7 +1,7 @@
 package com.music.bitchord.desktop
 
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
@@ -125,7 +125,7 @@ internal object DesktopArtworkMesh {
         bitmap.allocPixels(info)
         bitmap.installPixels(bytes)
         bitmap.setImmutable()
-        return org.jetbrains.skia.Image.makeFromBitmap(bitmap).toComposeImageBitmap()
+        return bitmap.asComposeImageBitmap()
     }
 
     private fun smoothstep(t: Float): Float {

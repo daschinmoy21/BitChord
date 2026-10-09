@@ -376,6 +376,7 @@ val windowsPortableAssemble by tasks.registering {
     val lastfmKey = lastfmApiKey
     val lastfmSharedSecret = lastfmSecret
     val mainClass = composeMainClass
+    val memoryArgs = desktopMemoryJvmArgs.joinToString(" ")
     // Declared, not implied.
     inputs.file(appJar)
     inputs.files(runtime)
@@ -383,6 +384,7 @@ val windowsPortableAssemble by tasks.registering {
     inputs.property("moduleIndex", moduleIndex)
     inputs.property("lastfm", lastfmKey.isNotBlank())
     inputs.property("mainClass", mainClass)
+    inputs.property("memoryArgs", memoryArgs)
     outputs.dir(stage)
     doLast {
         val target = stage.get().asFile
@@ -409,7 +411,7 @@ val windowsPortableAssemble by tasks.registering {
                 appendLine("set \"HERE=%~dp0\"")
                 appendLine("set \"RUNNER=java\"")
                 appendLine("if defined JAVA_HOME set \"RUNNER=%JAVA_HOME%\\bin\\java\"")
-                append("\"%RUNNER%\" -Dbitchord.version=$version")
+                append("\"%RUNNER%\" $memoryArgs -Dbitchord.version=$version")
                 if (moduleIndex.isNotBlank()) append(" -Dbitchord.module.index=$moduleIndex")
                 if (lastfmKey.isNotBlank() && lastfmSharedSecret.isNotBlank()) {
                     append(" -Dbitchord.lastfm.key=$lastfmKey -Dbitchord.lastfm.secret=$lastfmSharedSecret")
@@ -470,11 +472,33 @@ val windowsPortable by tasks.registering(Zip::class) {
 
 val composeMainClass = "com.music.bitchord.desktop.MainKt"
 
+/**
+ * How the desktop JVM is told to stay small; shared by the installers, `run` and the portable
+ * Windows launcher.
+ *
+ * Measured idle on the home screen: ~720 MB resident with only the heap cap and the periodic GC,
+ * ~500 MB with the rest. Most of the difference is not the heap at all — it is memory Skia, FFmpeg
+ * and WebKit have already freed that glibc keeps mapped until something trims it.
+ */
+val desktopMemoryJvmArgs = listOf(
+    // A JDK too old for one of these should start anyway rather than refuse to.
+    "-XX:+IgnoreUnrecognizedVMOptions",
+    "-Xmx512m",
+    "-XX:+UseG1GC",
+    "-XX:G1PeriodicGCInterval=20000",
+    "-XX:G1PeriodicGCSystemLoadThreshold=0",
+    // G1 keeps up to 70% of the heap free by default; the app idles at ~65 MB used, so that was
+    // ~200 MB committed for nothing.
+    "-XX:MinHeapFreeRatio=10",
+    "-XX:MaxHeapFreeRatio=30",
+    // malloc_trim on a timer: hands freed native memory back. Linux/glibc only; a no-op elsewhere.
+    "-XX:TrimNativeHeapInterval=15000",
+)
+
 compose.desktop {
     application {
         mainClass = composeMainClass
-        jvmArgs("-Xmx512m")
-        jvmArgs("-XX:+UseG1GC", "-XX:G1PeriodicGCInterval=20000", "-XX:G1PeriodicGCSystemLoadThreshold=0")
+        jvmArgs(*desktopMemoryJvmArgs.toTypedArray())
         jvmArgs("-Dbitchord.version=$appVersion")
         if (desktopModuleIndexUrl.isNotBlank()) {
             jvmArgs("-Dbitchord.module.index=$desktopModuleIndexUrl")

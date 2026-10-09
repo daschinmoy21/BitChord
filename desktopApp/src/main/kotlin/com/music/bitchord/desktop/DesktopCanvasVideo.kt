@@ -20,7 +20,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.music.bitchord.data.canvas.CanvasArtwork
@@ -34,7 +33,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import kotlin.math.roundToInt
 
@@ -88,7 +86,7 @@ internal fun DesktopCanvasVideo(spec: CanvasVideoSpec, modifier: Modifier) {
             var shown = 0
             try {
                 val pixels = ByteArray(decoder.width * decoder.height * 4)
-                val info = ImageInfo.makeN32(decoder.width, decoder.height, ColorAlphaType.OPAQUE)
+                val frames = DesktopCanvasFrames(ImageInfo.makeN32(decoder.width, decoder.height, ColorAlphaType.OPAQUE))
                 while (isActive) {
                     // Paused with the track, or for the length of the sleeve's
                     // collapse: the last frame stays up, nothing is decoded.
@@ -97,9 +95,7 @@ internal fun DesktopCanvasVideo(spec: CanvasVideoSpec, modifier: Modifier) {
                     val decoded = withContext(Dispatchers.IO) { decoder.nextFrame(pixels) }
                     if (!decoded) break
                     shown++
-                    // Handed to Skia rather than copied, so the next frame
-                    // cannot be decoded into the same array.
-                    frame = Image.makeRaster(info, pixels.copyOf(), decoder.width * 4).toComposeImageBitmap()
+                    frame = frames.next(pixels)
                     val spent = System.currentTimeMillis() - started
                     delay((decoder.frameIntervalMillis - spent).coerceAtLeast(0L))
                 }
@@ -121,11 +117,13 @@ internal fun DesktopCanvasVideo(spec: CanvasVideoSpec, modifier: Modifier) {
     // clip — another every so often.
     LaunchedEffect(rendered, spec.refreshFrameEveryMs) {
         if (!rendered) return@LaunchedEffect
-        frame?.let(reportFrame)
+        // A copy, at the size asked for: the frame itself is closed two frames from now.
+        fun capture() = frame?.let { reportFrame(canvasSnapshot(it, spec.frameCapturePx)) }
+        capture()
         val interval = spec.refreshFrameEveryMs ?: return@LaunchedEffect
         while (isActive) {
             delay(interval)
-            frame?.let(reportFrame)
+            capture()
         }
     }
 
