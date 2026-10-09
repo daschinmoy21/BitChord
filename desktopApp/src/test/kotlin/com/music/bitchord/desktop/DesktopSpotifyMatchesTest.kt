@@ -2,6 +2,8 @@ package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import java.util.prefs.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,6 +38,28 @@ class DesktopSpotifyMatchesTest {
         store.saveSpotifyMatches(mapOf("sp1" to song))
         store.saveString("spotify_matches", store.string("spotify_matches") + "\ngarbage\n|")
         assertEquals(setOf("sp1"), store.spotifyMatches().keys)
+    }
+
+    @Test
+    fun `oldest matches are evicted from memory and disk`() = withStore { store ->
+        runBlocking {
+            val cache = DesktopSpotifyMatches(store)
+            cache.saveAll((0..MAX_SPOTIFY_MATCHES).associate { "sp$it" to song })
+            assertNull(cache.get("sp0"))
+            assertEquals(song, cache.get("sp1"))
+            assertEquals(MAX_SPOTIFY_MATCHES, store.spotifyMatches().size)
+            assertNull(DesktopSpotifyMatches(store).get("sp0"))
+        }
+    }
+
+    @Test
+    fun `overlapping saves retain every match after reopening`() = withStore { store ->
+        runBlocking {
+            val cache = DesktopSpotifyMatches(store)
+            (1..50).map { n -> async { cache.saveAll(mapOf("sp$n" to song)) } }.awaitAll()
+            val reopened = DesktopSpotifyMatches(store)
+            (1..50).forEach { n -> assertEquals(song, reopened.get("sp$n")) }
+        }
     }
 
     private fun withStore(block: (DesktopPersistence) -> Unit) {

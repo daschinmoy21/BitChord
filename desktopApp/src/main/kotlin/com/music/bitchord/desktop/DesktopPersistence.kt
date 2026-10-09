@@ -12,6 +12,8 @@ import java.util.Base64
 import java.util.UUID
 import java.util.prefs.Preferences
 
+internal const val MAX_SPOTIFY_MATCHES = 5000
+
 /** Small OS-backed store for desktop state; no Android Context is required. */
 class DesktopPersistence(
     internal val preferences: Preferences = Preferences.userRoot().node("com.music.bitchord.desktop"),
@@ -362,7 +364,6 @@ class DesktopPersistence(
         const val KEY_SOURCE_CONFIGS_PROTECTED = "source_configs_dpapi_v1"
         const val MAX_HISTORY = 100
         const val MAX_QUEUE = 200
-        const val MAX_SPOTIFY_MATCHES = 5000
         const val DELIMITER = "|"
         const val PLAYLIST_DELIMITER = "#"
         const val SONG_DELIMITER = ";"

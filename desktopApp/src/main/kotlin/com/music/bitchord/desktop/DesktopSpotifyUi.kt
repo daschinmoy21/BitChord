@@ -36,11 +36,19 @@ internal class DesktopSpotifyMatches(private val persistence: DesktopPersistence
     /** Records [found], most recent last, and writes the whole cache back. */
     suspend fun saveAll(found: Map<String, Song>) {
         if (found.isEmpty()) return
-        val snapshot = synchronized(this) {
-            found.forEach { (id, song) -> matches.remove(id); matches[id] = song }
-            LinkedHashMap(matches)
+        withContext(Dispatchers.IO) {
+            // Keep the merge and the write under one lock: an older save must never
+            // overwrite a newer snapshot. Initial loading also stays off the UI thread.
+            synchronized(this@DesktopSpotifyMatches) {
+                found.forEach { (id, song) -> matches.remove(id); matches[id] = song }
+                val oldest = matches.entries.iterator()
+                while (matches.size > MAX_SPOTIFY_MATCHES) {
+                    oldest.next()
+                    oldest.remove()
+                }
+                persistence.saveSpotifyMatches(matches)
+            }
         }
-        withContext(Dispatchers.IO) { persistence.saveSpotifyMatches(snapshot) }
     }
 
     companion object {
@@ -96,7 +104,7 @@ internal fun DesktopSpotifyPage(
                 sourceTracks.forEachIndexed { index, track ->
                     currentCoroutineContext().ensureActive()
                     progress = "Matching ${index + 1} of ${sourceTracks.size}…"
-                    val song = DesktopSpotifyMatches.shared.get(track.id)
+                    val song = matched[track.id] ?: DesktopSpotifyMatches.shared.get(track.id)
                         ?: SpotifyImporter.matchTrack(track)?.also { matched[track.id] = it }
                     if (song != null) songs += song
                 }
