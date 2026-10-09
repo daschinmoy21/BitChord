@@ -16,6 +16,10 @@ import androidx.compose.foundation.Image
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.graphics.decodeToImageBitmap
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.memory.MemoryCache
 import java.net.URI
 
 /**
@@ -43,7 +47,26 @@ internal object DesktopArtworkCache {
     }
 
     /** Everything held, dropped — what the Storage settings' "Clear image cache" does. */
-    fun clear() = images.clear()
+    fun clear() {
+        images.clear()
+        SingletonImageLoader.get(PlatformContext.INSTANCE).memoryCache?.clear()
+    }
+
+    /**
+     * The shared UI's image loader (Coil), with a memory budget of its own choosing rather than
+     * Coil's: on the JVM that is 15% of a fixed 512 MB, ~77 MB of decoded bitmaps on top of this
+     * cache's. What it shows is thumbnails and palette samples, which it can re-read from its disk
+     * cache, so a smaller one costs a decode and not a download.
+     */
+    fun installImageLoader() {
+        SingletonImageLoader.setSafe { context ->
+            ImageLoader.Builder(context)
+                .memoryCache { MemoryCache.Builder().maxSizeBytes(COIL_MEMORY_BYTES).build() }
+                .build()
+        }
+    }
+
+    private const val COIL_MEMORY_BYTES = 48L * 1024 * 1024
 
     suspend fun load(url: String?): ImageBitmap? {
         if (url.isNullOrBlank()) return null

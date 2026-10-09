@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.sync.Mutex
@@ -21,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.ColorAlphaType
-import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -284,20 +282,19 @@ fun DesktopCanvasView(
             var shown = 0
             try {
                 val pixels = ByteArray(decoder.width * decoder.height * 4)
-                val info = ImageInfo.makeN32(decoder.width, decoder.height, ColorAlphaType.OPAQUE)
+                val frames = DesktopCanvasFrames(ImageInfo.makeN32(decoder.width, decoder.height, ColorAlphaType.OPAQUE))
                 while (isActive) {
                     val started = System.currentTimeMillis()
                     val decoded = withContext(Dispatchers.IO) { decoder.nextFrame(pixels) }
                     if (!decoded) break
                     shown++
-                    // `pixels` is handed to Skia rather than copied into it, so the array cannot be
-                    // the one the decoder writes the next frame into.
-                    val next = Image.makeRaster(info, pixels.copyOf(), decoder.width * 4).toComposeImageBitmap()
+                    val next = frames.next(pixels)
                     frame = next
                     // The backdrop reads the first frame and holds it: re-meshing every frame would
                     // be a full resample twenty-five times a second for a wash nobody is watching
-                    // closely, and the clip's palette does not change much across it anyway.
-                    if (shown == 1) DesktopCanvasBackdrop.publish(url, next)
+                    // closely, and the clip's palette does not change much across it anyway. A
+                    // copy, since this frame is closed two frames from now.
+                    if (shown == 1) DesktopCanvasBackdrop.publish(url, canvasSnapshot(next, CANVAS_BACKDROP_PX))
                     val spent = System.currentTimeMillis() - started
                     delay((decoder.frameIntervalMillis - spent).coerceAtLeast(0L))
                 }
@@ -328,6 +325,9 @@ fun DesktopCanvasView(
         )
     }
 }
+
+/** The backdrop's copy of a clip: the mesh never looks at more than 128 rows or columns of it. */
+private const val CANVAS_BACKDROP_PX = 128
 
 private const val DESKTOP_CANVAS_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
