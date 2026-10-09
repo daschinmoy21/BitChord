@@ -71,8 +71,8 @@ class DesktopShareCardTest {
     @Test
     fun `file names lose what a file system cannot carry`() {
         assertEquals("AC_DC - Back In Black", DesktopShareFiles.safeName("AC/DC - Back In Black"))
-        assertEquals("BitChord", DesktopShareFiles.safeName(" ... "))
-        assertEquals("BitChord Recently played - 2026-10-09", DesktopShareCard.Recent(songs).fileName(LocalDate.of(2026, 10, 9)))
+        assertEquals("Share card", DesktopShareFiles.safeName(" ... "))
+        assertEquals("Recently played - 2026-10-09", DesktopShareCard.Recent(songs).fileName(LocalDate.of(2026, 10, 9)))
     }
 
     @Test

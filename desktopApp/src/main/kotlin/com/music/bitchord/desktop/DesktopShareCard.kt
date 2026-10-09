@@ -54,8 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import bitchord.desktopapp.generated.resources.Res
-import bitchord.desktopapp.generated.resources.logo_mark
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.artworkAt
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +62,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.skia.EncodedImageFormat
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -121,8 +118,8 @@ internal fun DesktopShareCard.artworkUrls(): List<String> =
 /** What the PNG is called, minus the extension. */
 internal fun DesktopShareCard.fileName(today: LocalDate = LocalDate.now()): String = when (this) {
     is DesktopShareCard.Track -> "${song.artist} - ${song.title}"
-    is DesktopShareCard.Replay -> "BitChord Replay - ${summary.label.ifBlank { summary.period.chip }}"
-    is DesktopShareCard.Recent -> "BitChord Recently played - $today"
+    is DesktopShareCard.Replay -> "Replay - ${summary.label.ifBlank { summary.period.chip }}"
+    is DesktopShareCard.Recent -> "Recently played - $today"
 }
 
 /** The artwork a card needs, fetched, and the colours drawn from its hero. */
@@ -152,6 +149,8 @@ internal fun DesktopShareCardContent(
     Box(modifier.requiredSize(CardWidth, CardHeight).clipToBounds()) {
         ShareBackdrop(style, hero, art.palette)
         Column(Modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 36.dp)) {
+            // A lone cover sits mid-frame; a list sits high, with a third of the spare room above it.
+            Spacer(Modifier.weight(1f))
             when (card) {
                 is DesktopShareCard.Track -> TrackBody(card.song, hero)
                 is DesktopShareCard.Replay -> ReplayBody(card.summary, card.listSongs(), art.images)
@@ -162,8 +161,7 @@ internal fun DesktopShareCardContent(
                     images = art.images,
                 )
             }
-            Spacer(Modifier.weight(1f))
-            ShareFooter()
+            Spacer(Modifier.weight(if (card is DesktopShareCard.Track) 1f else 2f))
         }
     }
 }
@@ -216,7 +214,6 @@ private fun ShareBackdrop(style: DesktopShareStyle, hero: ImageBitmap?, palette:
 
 @Composable
 private fun ColumnScope.TrackBody(song: Song, hero: ImageBitmap?) {
-    Spacer(Modifier.height(40.dp))
     Artwork(
         hero,
         Modifier.align(Alignment.CenterHorizontally).size(270.dp)
@@ -379,21 +376,6 @@ private fun Artwork(bitmap: ImageBitmap?, modifier: Modifier, corner: Int) {
     else Image(bitmap, null, modifier.clip(shape), contentScale = ContentScale.Crop)
 }
 
-@Composable
-private fun ShareFooter() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(Res.drawable.logo_mark), contentDescription = null, modifier = Modifier.size(26.dp, 17.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(
-            "BitChord",
-            color = Color.White,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.W700,
-            style = MaterialTheme.typography.titleMedium.onCard(),
-        )
-    }
-}
-
 // ── Export ──────────────────────────────────────────────────────────────────
 
 /** The card as a 1080 × 1920 PNG, drawn off screen by the same composable the preview shows. */
@@ -460,7 +442,7 @@ internal object DesktopShareFiles {
 
     /** [name] with what a file name cannot carry on any of the three systems taken out. */
     internal fun safeName(name: String): String =
-        name.replace(Regex("""[\\/:*?"<>|\x00-\x1F]"""), "_").trim().trim('.').take(120).ifBlank { "BitChord" }
+        name.replace(Regex("""[\\/:*?"<>|\x00-\x1F]"""), "_").trim().trim('.').take(120).ifBlank { "Share card" }
 
     private fun picturesDir(): File {
         val home = File(System.getProperty("user.home"))
