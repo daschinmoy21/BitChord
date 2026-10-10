@@ -180,7 +180,8 @@ internal object DesktopGlobalKeys {
         if (event.id == KeyEvent.KEY_PRESSED && event.keyCode == KeyEvent.VK_ESCAPE &&
             event.modifiersEx == 0 && closeShortcuts?.invoke() == true
         ) {
-            heldKeys += event.keyCode
+            heldKeys[event.keyCode] = DesktopGlobalAction.SHOW_SHORTCUTS
+            typedEchoPending = true
             return@KeyEventDispatcher true
         }
         val action = actionFor(
