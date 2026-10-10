@@ -3028,8 +3028,11 @@ fun BitChordDesktopApp() {
             true
         }
         DesktopGlobalKeys.showShortcuts = {
-            overlays.shortcuts = true
+            overlays.shortcuts = !overlays.shortcuts
             true
+        }
+        DesktopGlobalKeys.closeShortcuts = {
+            overlays.shortcuts.also { overlays.shortcuts = false }
         }
     }
     DisposableEffect(Unit) {
@@ -3041,6 +3044,7 @@ fun BitChordDesktopApp() {
             DesktopGlobalKeys.toggleMute = null
             DesktopGlobalKeys.focusSearch = null
             DesktopGlobalKeys.showShortcuts = null
+            DesktopGlobalKeys.closeShortcuts = null
         }
     }
 

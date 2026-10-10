@@ -68,6 +68,13 @@ internal object DesktopGlobalKeys {
     @Volatile
     var showShortcuts: (() -> Boolean)? = null
 
+    /**
+     * Set by the app: closes the shortcuts cheat sheet if it is open, and says whether it was. Esc
+     * goes here first, so the sheet closes even when nothing inside the window has the focus.
+     */
+    @Volatile
+    var closeShortcuts: (() -> Boolean)? = null
+
     /** Which action [keyCode] with these modifiers asks for, or null when it asks for nothing here. */
     internal fun actionFor(
         keyCode: Int,
@@ -170,6 +177,12 @@ internal object DesktopGlobalKeys {
             return@KeyEventDispatcher true
         }
         if (event.id == KeyEvent.KEY_TYPED && typedEchoPending) return@KeyEventDispatcher true
+        if (event.id == KeyEvent.KEY_PRESSED && event.keyCode == KeyEvent.VK_ESCAPE &&
+            event.modifiersEx == 0 && closeShortcuts?.invoke() == true
+        ) {
+            heldKeys += event.keyCode
+            return@KeyEventDispatcher true
+        }
         val action = actionFor(
             keyCode = event.keyCode,
             ctrl = event.isControlDown,
