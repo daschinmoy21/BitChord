@@ -156,6 +156,8 @@ private fun desktopMain() = application {
             )
         }
         LaunchedEffect(Unit) { DesktopGlobalKeys.install() }
+        // Under Xwayland the window can be focused without Java hearing of it; see [DesktopX11Focus].
+        LaunchedEffect(composeWindow) { DesktopX11Focus.install(composeWindow) }
         // The interface is drawn at the listener's chosen size (Ctrl and plus, minus or zero).
         val uiScale by DesktopUiScale.scale.collectAsState()
         val density = LocalDensity.current
