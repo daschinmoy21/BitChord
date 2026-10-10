@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.tooling.ComposeToolingApi
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.geometry.Rect
@@ -212,7 +213,8 @@ internal object DesktopKeyboardHints {
      * window's own), from the last [hintBarrier] on, with nothing scrolled or clipped out of view.
      */
     // The window's semantics owners are the same list accessibility and test tools read.
-    @OptIn(ComposeToolingApi::class)
+    // Marked experimental in the Windows build of Compose and tooling-only in the Linux one.
+    @OptIn(ComposeToolingApi::class, ExperimentalComposeUiApi::class)
     private fun visibleNodes(): List<SemanticsNode> {
         val window = window ?: return emptyList()
         val ordered = mutableListOf<SemanticsNode>()
