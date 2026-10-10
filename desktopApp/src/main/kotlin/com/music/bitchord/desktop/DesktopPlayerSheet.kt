@@ -84,6 +84,8 @@ internal fun DesktopPlayerSheet(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { translationY = offset.value }
+                // The page is underneath; the keyboard hints label only the player.
+                .hintBarrier()
                 .draggable(
                     state = dragState,
                     orientation = Orientation.Vertical,

@@ -12,6 +12,7 @@ import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.pointer.isBackPressed
+import androidx.compose.ui.input.pointer.isForwardPressed
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.snapshotFlow
@@ -483,6 +484,21 @@ private enum class DesktopDestination(val id: String, val label: String) {
     SETTINGS("settings", "Settings"),
 }
 
+/** The pages Ctrl and 1 to 8 open, in the order the sidebar lists them. */
+private fun sidebarShortcutPages(spotifyEnabled: Boolean): List<DesktopDestination> = listOfNotNull(
+    DesktopDestination.LISTEN_NOW,
+    DesktopDestination.EXPLORE,
+    DesktopDestination.LIBRARY,
+    DesktopDestination.SPOTIFY.takeIf { spotifyEnabled },
+    DesktopDestination.SEARCH,
+    DesktopDestination.HISTORY,
+    DesktopDestination.DOWNLOADS,
+    DesktopDestination.LOCAL_MUSIC,
+)
+
+/** Ctrl and 9 is Settings, at the foot of the sidebar, however many pages sit above it. */
+private const val SETTINGS_SHORTCUT = 9
+
 private enum class DesktopRepeatMode {
     OFF,
     ALL,
@@ -577,6 +593,8 @@ fun BitChordDesktopApp() {
     val navHistory = remember { mutableStateListOf<DesktopNavEntry>() }
     /** Set while [goBack] puts a place back, so that move is not itself recorded as a visit. */
     val navRestoring = remember { booleanArrayOf(false) }
+    // The places back has stepped away from, newest last, for forward to return to.
+    val navForward = remember { mutableStateListOf<DesktopNavEntry>() }
     /** Opens a song's menu at the pointer; set by the pages' menu host once it is in place. */
     var pageMenu by remember { mutableStateOf<(Song) -> Unit>({}) }
     val homeSeenTitles = remember { HashSet<String>() }
@@ -2774,6 +2792,8 @@ fun BitChordDesktopApp() {
                 } else {
                     navHistory.add(before)
                     if (navHistory.size > NAV_HISTORY_LIMIT) navHistory.removeAt(0)
+                    // A new visit, not a step back or forward: there is nothing ahead any more.
+                    navForward.clear()
                 }
             }
             // The newest copy of the same place, so an album that has paged in more tracks comes
@@ -2782,10 +2802,8 @@ fun BitChordDesktopApp() {
         }
     }
 
-    /** Back to the place before this one — the top bar's arrow, the mouse's back button, Alt+Left. */
-    fun goBack() {
-        val entry = navHistory.removeLastOrNull() ?: return
-        if (entry.key == here().key) return
+    /** Puts the window back on [entry] without counting it as a new visit. */
+    fun restorePlace(entry: DesktopNavEntry) {
         navRestoring[0] = true
         destination = entry.destination
         overlays.replay = entry.replay
@@ -2804,6 +2822,26 @@ fun BitChordDesktopApp() {
                 artistReloads++
             }
         }
+    }
+
+    /** Back to the place before this one — the top bar's arrow, the mouse's back button, Alt+Left, Shift+H. */
+    fun goBack() {
+        val entry = navHistory.removeLastOrNull() ?: return
+        val current = here()
+        if (entry.key == current.key) return
+        navForward.add(current)
+        if (navForward.size > NAV_HISTORY_LIMIT) navForward.removeAt(0)
+        restorePlace(entry)
+    }
+
+    /** On to the place back last left — the mouse's forward button, Shift+L. */
+    fun goForward() {
+        val entry = navForward.removeLastOrNull() ?: return
+        val current = here()
+        if (entry.key == current.key) return
+        navHistory.add(current)
+        if (navHistory.size > NAV_HISTORY_LIMIT) navHistory.removeAt(0)
+        restorePlace(entry)
     }
 
     fun openMoodGenre(item: MoodGenre) {
@@ -3034,6 +3072,22 @@ fun BitChordDesktopApp() {
         DesktopGlobalKeys.closeShortcuts = {
             overlays.shortcuts.also { overlays.shortcuts = false }
         }
+        DesktopGlobalKeys.goBack = {
+            navHistory.isNotEmpty().also { if (it) goBack() }
+        }
+        DesktopGlobalKeys.goForward = {
+            navForward.isNotEmpty().also { if (it) goForward() }
+        }
+        DesktopGlobalKeys.navigate = navigate@{ index ->
+            if (index == SETTINGS_SHORTCUT) {
+                openSettings()
+                return@navigate true
+            }
+            val next = sidebarShortcutPages(spotifyEnabled).getOrNull(index - 1) ?: return@navigate false
+            overlays.nowPlaying = false
+            selectDestination(next)
+            true
+        }
     }
     DisposableEffect(Unit) {
         onDispose {
@@ -3045,6 +3099,9 @@ fun BitChordDesktopApp() {
             DesktopGlobalKeys.focusSearch = null
             DesktopGlobalKeys.showShortcuts = null
             DesktopGlobalKeys.closeShortcuts = null
+            DesktopGlobalKeys.navigate = null
+            DesktopGlobalKeys.goBack = null
+            DesktopGlobalKeys.goForward = null
         }
     }
 
@@ -3580,6 +3637,7 @@ fun BitChordDesktopApp() {
                                 while (true) {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     if (event.type == PointerEventType.Press && event.buttons.isBackPressed) goBack()
+                                    if (event.type == PointerEventType.Press && event.buttons.isForwardPressed) goForward()
                                 }
                             }
                         },
@@ -4574,6 +4632,12 @@ private fun DesktopSidebar(
 
     val titleBarEnabled by DesktopTitleBarSetting.enabled.collectAsState()
     val inlineCaption = DesktopPlatform.drawsOwnWindowFrame && !titleBarEnabled
+    // While the keyboard hints are up (a tap of Ctrl), each page shows the digit that opens it with Ctrl.
+    val hints by DesktopKeyboardHints.hints.collectAsState()
+    val showDigits = hints.isNotEmpty()
+    val shortcutPages = sidebarShortcutPages(spotifyEnabled)
+    fun shortcut(page: DesktopDestination): Int? =
+        if (showDigits) shortcutPages.indexOf(page).takeIf { it >= 0 }?.plus(1) else null
     Box(
         Modifier
             .width(220.dp)
@@ -4601,25 +4665,25 @@ private fun DesktopSidebar(
                 onFocusChanged = { searchFocused = it },
             )
             Spacer(Modifier.height(20.dp))
-            DesktopSidebarItem(BitChordIcons.Home, DesktopStrings["home", "Home"], destination == DesktopDestination.LISTEN_NOW) {
+            DesktopSidebarItem(BitChordIcons.Home, DesktopStrings["home", "Home"], destination == DesktopDestination.LISTEN_NOW, shortcut(DesktopDestination.LISTEN_NOW)) {
                 onDestinationSelected(DesktopDestination.LISTEN_NOW)
             }
-            DesktopSidebarItem(BitChordIcons.Explore, "Explore", destination == DesktopDestination.EXPLORE) {
+            DesktopSidebarItem(BitChordIcons.Explore, "Explore", destination == DesktopDestination.EXPLORE, shortcut(DesktopDestination.EXPLORE)) {
                 onDestinationSelected(DesktopDestination.EXPLORE)
             }
-            DesktopSidebarItem(BitChordIcons.Library, "Library", destination == DesktopDestination.LIBRARY) {
+            DesktopSidebarItem(BitChordIcons.Library, "Library", destination == DesktopDestination.LIBRARY, shortcut(DesktopDestination.LIBRARY)) {
                 onDestinationSelected(DesktopDestination.LIBRARY)
             }
-            if (spotifyEnabled) DesktopSidebarItem(Icons.Rounded.LibraryMusic, "Spotify", destination == DesktopDestination.SPOTIFY) {
+            if (spotifyEnabled) DesktopSidebarItem(Icons.Rounded.LibraryMusic, "Spotify", destination == DesktopDestination.SPOTIFY, shortcut(DesktopDestination.SPOTIFY)) {
                 onDestinationSelected(DesktopDestination.SPOTIFY)
             }
-            DesktopSidebarItem(BitChordIcons.Search, "Search", destination == DesktopDestination.SEARCH) {
+            DesktopSidebarItem(BitChordIcons.Search, "Search", destination == DesktopDestination.SEARCH, shortcut(DesktopDestination.SEARCH)) {
                 onDestinationSelected(DesktopDestination.SEARCH)
             }
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = desktopChromeDivider())
             Spacer(Modifier.height(12.dp))
-            DesktopSidebarItem(BitChordIcons.Clock, "History", destination == DesktopDestination.HISTORY) {
+            DesktopSidebarItem(BitChordIcons.Clock, "History", destination == DesktopDestination.HISTORY, shortcut(DesktopDestination.HISTORY)) {
                 onDestinationSelected(DesktopDestination.HISTORY)
             }
             val queued by DesktopDownloadQueue.active.collectAsState()
@@ -4627,10 +4691,11 @@ private fun DesktopSidebar(
                 BitChordIcons.Download,
                 if (queued.isEmpty()) "Downloads" else "Downloads · ${queued.size}",
                 destination == DesktopDestination.DOWNLOADS,
+                shortcut(DesktopDestination.DOWNLOADS),
             ) {
                 onDestinationSelected(DesktopDestination.DOWNLOADS)
             }
-            DesktopSidebarItem(BitChordIcons.Library, "Local Music", destination == DesktopDestination.LOCAL_MUSIC) {
+            DesktopSidebarItem(BitChordIcons.Library, "Local Music", destination == DesktopDestination.LOCAL_MUSIC, shortcut(DesktopDestination.LOCAL_MUSIC)) {
                 onDestinationSelected(DesktopDestination.LOCAL_MUSIC)
             }
             Spacer(Modifier.height(6.dp))
@@ -4667,7 +4732,7 @@ private fun DesktopSidebar(
             }
             HorizontalDivider(color = desktopChromeDivider())
             Spacer(Modifier.height(8.dp))
-            DesktopSidebarItem(Icons.Rounded.Settings, "Settings", settingsOpen) {
+            DesktopSidebarItem(Icons.Rounded.Settings, "Settings", settingsOpen, if (showDigits) SETTINGS_SHORTCUT else null) {
                 onOpenSettings()
             }
         }
@@ -4687,6 +4752,8 @@ private fun DesktopSidebarItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean,
+    /** The digit that opens it with Ctrl, shown while the keyboard hints are up. */
+    shortcut: Int? = null,
     onClick: () -> Unit,
 ) {
     Row(
@@ -4706,7 +4773,9 @@ private fun DesktopSidebarItem(
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
+        if (shortcut != null) DesktopKeyChip("Ctrl $shortcut")
     }
 }
 

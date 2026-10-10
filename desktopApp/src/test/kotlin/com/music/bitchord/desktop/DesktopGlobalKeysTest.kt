@@ -75,13 +75,15 @@ class DesktopGlobalKeysTest {
     }
 
     @Test
-    fun `only seeking and volume repeat while held`() {
+    fun `only seeking, volume and scrolling repeat while held`() {
         val repeating = DesktopGlobalAction.entries.filter { it.repeats }.toSet()
         assertEquals(
             setOf(
                 DesktopGlobalAction.SEEK_BACK, DesktopGlobalAction.SEEK_FORWARD,
                 DesktopGlobalAction.SEEK_BACK_LONG, DesktopGlobalAction.SEEK_FORWARD_LONG,
                 DesktopGlobalAction.VOLUME_UP, DesktopGlobalAction.VOLUME_DOWN,
+                DesktopGlobalAction.SCROLL_DOWN, DesktopGlobalAction.SCROLL_UP,
+                DesktopGlobalAction.PAGE_DOWN, DesktopGlobalAction.PAGE_UP,
             ),
             repeating,
         )

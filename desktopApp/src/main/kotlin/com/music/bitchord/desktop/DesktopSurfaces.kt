@@ -159,7 +159,9 @@ internal fun DesktopDialogPanel(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onDismiss,
-                ),
+                )
+                // The page under the scrim is out of reach, so the keyboard hints leave it unlabelled.
+                .hintBarrier(),
         )
         val shape = RoundedCornerShape(20.dp)
         Box(
@@ -177,7 +179,8 @@ internal fun DesktopDialogPanel(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
-                    ),
+                    )
+                    .hintSkip(),
             )
             Column(
                 Modifier.padding(bottom = 4.dp),

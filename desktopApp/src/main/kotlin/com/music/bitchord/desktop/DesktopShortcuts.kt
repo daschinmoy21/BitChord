@@ -25,6 +25,11 @@ internal fun DesktopShortcutsDialog(onDismiss: () -> Unit) {
         "M" to DesktopStrings["d_shortcut_mute", "Mute or unmute"],
         "/  or  Ctrl + K" to DesktopStrings["d_shortcut_search", "Focus search"],
         "Ctrl + +  −  0" to DesktopStrings["d_shortcut_zoom", "Zoom in, out or reset"],
+        "Ctrl + 1 … 9" to DesktopStrings["d_shortcut_pages", "Open a sidebar page"],
+        "Ctrl (tap)" to DesktopStrings["d_shortcut_hints", "Label everything to click it by keyboard"],
+        "Shift + H  L" to DesktopStrings["d_shortcut_back_forward", "Back or forward"],
+        "J  K" to DesktopStrings["d_shortcut_scroll", "Scroll down or up"],
+        "D  U" to DesktopStrings["d_shortcut_page_scroll", "Scroll half a page"],
         "Alt + ←" to DesktopStrings["d_shortcut_back", "Go back"],
         "?" to DesktopStrings["d_shortcut_help", "Show this list"],
     )

@@ -29,6 +29,13 @@ internal enum class DesktopGlobalAction(
     MUTE(typesCharacter = true),
     FOCUS_SEARCH(typesCharacter = true),
     SHOW_SHORTCUTS(typesCharacter = true),
+    NAVIGATE(typesCharacter = true),
+    SCROLL_DOWN(repeats = true, typesCharacter = true),
+    SCROLL_UP(repeats = true, typesCharacter = true),
+    PAGE_DOWN(repeats = true, typesCharacter = true),
+    PAGE_UP(repeats = true, typesCharacter = true),
+    BACK(typesCharacter = true),
+    FORWARD(typesCharacter = true),
 }
 
 /**
@@ -75,6 +82,20 @@ internal object DesktopGlobalKeys {
     @Volatile
     var closeShortcuts: (() -> Boolean)? = null
 
+    /**
+     * Set by the app: opens the page the sidebar lists at [index] (1 is Home; 9 is Settings), and
+     * says whether there was one.
+     */
+    @Volatile
+    var navigate: ((index: Int) -> Boolean)? = null
+
+    /** Set by the app: back and forward through the places visited, each saying whether it moved. */
+    @Volatile
+    var goBack: (() -> Boolean)? = null
+
+    @Volatile
+    var goForward: (() -> Boolean)? = null
+
     /** Which action [keyCode] with these modifiers asks for, or null when it asks for nothing here. */
     internal fun actionFor(
         keyCode: Int,
@@ -92,6 +113,8 @@ internal object DesktopGlobalKeys {
                 KeyEvent.VK_0, KeyEvent.VK_NUMPAD0 -> DesktopGlobalAction.ZOOM_RESET
                 // Ctrl+K types nothing, so it is the way to the search box from inside another one.
                 KeyEvent.VK_K -> if (shift) null else DesktopGlobalAction.FOCUS_SEARCH
+                // Ctrl and a digit types nothing either: the sidebar's pages, in the order it lists them.
+                in KeyEvent.VK_1..KeyEvent.VK_9 -> if (shift) null else DesktopGlobalAction.NAVIGATE
                 // Ctrl with the arrows moves a caret by words, and a slider by more.
                 KeyEvent.VK_LEFT -> if (textEntryActive || shift) null else DesktopGlobalAction.PREVIOUS
                 KeyEvent.VK_RIGHT -> if (textEntryActive || shift) null else DesktopGlobalAction.NEXT
@@ -109,6 +132,14 @@ internal object DesktopGlobalKeys {
             KeyEvent.VK_UP -> if (shift) null else DesktopGlobalAction.VOLUME_UP
             KeyEvent.VK_DOWN -> if (shift) null else DesktopGlobalAction.VOLUME_DOWN
             KeyEvent.VK_M -> if (shift) null else DesktopGlobalAction.MUTE
+            // Scrolling the page, as Vimium and less do.
+            KeyEvent.VK_J -> if (shift) null else DesktopGlobalAction.SCROLL_DOWN
+            KeyEvent.VK_K -> if (shift) null else DesktopGlobalAction.SCROLL_UP
+            KeyEvent.VK_D -> if (shift) null else DesktopGlobalAction.PAGE_DOWN
+            KeyEvent.VK_U -> if (shift) null else DesktopGlobalAction.PAGE_UP
+            // Shift and H or L: back and forward, as Vimium has them.
+            KeyEvent.VK_H -> if (shift) DesktopGlobalAction.BACK else null
+            KeyEvent.VK_L -> if (shift) DesktopGlobalAction.FORWARD else null
             // "?" is Shift and the slash key.
             KeyEvent.VK_SLASH ->
                 if (shift) DesktopGlobalAction.SHOW_SHORTCUTS else DesktopGlobalAction.FOCUS_SEARCH
@@ -119,6 +150,10 @@ internal object DesktopGlobalKeys {
     internal const val SEEK_STEP_MS = 5_000L
     internal const val SEEK_LONG_STEP_MS = 15_000L
     internal const val VOLUME_STEP = 0.05f
+
+    // How far j and k, and d and u, scroll: a share of the scrolled area's own height.
+    private const val SCROLL_STEP = 0.15f
+    private const val PAGE_STEP = 0.5f
 
     /**
      * Whether an AWT key event belongs to a Space keystroke. The KEY_TYPED event of a keystroke has
@@ -146,7 +181,7 @@ internal object DesktopGlobalKeys {
     private var typedEchoPending = false
 
     /** Runs what [action] asks of the app, and says whether the app did it. */
-    private fun perform(action: DesktopGlobalAction): Boolean = when (action) {
+    private fun perform(action: DesktopGlobalAction, keyCode: Int): Boolean = when (action) {
         DesktopGlobalAction.SEEK_BACK -> seekBy?.invoke(-SEEK_STEP_MS)
         DesktopGlobalAction.SEEK_FORWARD -> seekBy?.invoke(SEEK_STEP_MS)
         DesktopGlobalAction.SEEK_BACK_LONG -> seekBy?.invoke(-SEEK_LONG_STEP_MS)
@@ -158,6 +193,13 @@ internal object DesktopGlobalKeys {
         DesktopGlobalAction.MUTE -> toggleMute?.invoke()
         DesktopGlobalAction.FOCUS_SEARCH -> focusSearch?.invoke()
         DesktopGlobalAction.SHOW_SHORTCUTS -> showShortcuts?.invoke()
+        DesktopGlobalAction.NAVIGATE -> navigate?.invoke(keyCode - KeyEvent.VK_0)
+        DesktopGlobalAction.SCROLL_DOWN -> DesktopKeyboardHints.scroll(SCROLL_STEP)
+        DesktopGlobalAction.SCROLL_UP -> DesktopKeyboardHints.scroll(-SCROLL_STEP)
+        DesktopGlobalAction.PAGE_DOWN -> DesktopKeyboardHints.scroll(PAGE_STEP)
+        DesktopGlobalAction.PAGE_UP -> DesktopKeyboardHints.scroll(-PAGE_STEP)
+        DesktopGlobalAction.BACK -> goBack?.invoke()
+        DesktopGlobalAction.FORWARD -> goForward?.invoke()
         else -> false
     } ?: false
 
@@ -171,6 +213,8 @@ internal object DesktopGlobalKeys {
     }
 
     private val dispatcher = KeyEventDispatcher { event ->
+        // Ctrl on its own, and the hints it brings up, come before everything else.
+        if (DesktopKeyboardHints.onKey(event)) return@KeyEventDispatcher true
         // The release and typed echo of a key that was taken go with it.
         if (event.id == KeyEvent.KEY_RELEASED && heldKeys.remove(event.keyCode) != null) {
             typedEchoPending = heldKeys.values.any { it.typesCharacter }
@@ -247,7 +291,7 @@ internal object DesktopGlobalKeys {
     /** Tracks the action as well as the physical key, so changed modifiers start a new action. */
     internal fun handlePlaybackPress(keyCode: Int, action: DesktopGlobalAction): Boolean {
         if (heldKeys[keyCode] == action && !action.repeats) return true
-        if (!perform(action)) {
+        if (!perform(action, keyCode)) {
             heldKeys.remove(keyCode)
             typedEchoPending = heldKeys.values.any { it.typesCharacter }
             return false
