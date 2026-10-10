@@ -80,8 +80,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
-        versionName = providers.gradleProperty("bitchord.version").orElse("1.10.1").get().removePrefix("v")
+        versionCode = 30
+        versionName = providers.gradleProperty("bitchord.version").orElse("1.10.2").get().removePrefix("v")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
