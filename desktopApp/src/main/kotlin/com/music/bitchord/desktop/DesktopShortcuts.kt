@@ -21,7 +21,7 @@ internal fun DesktopShortcutsDialog(onDismiss: () -> Unit) {
         "Space" to DesktopStrings["d_shortcut_play_pause", "Play or pause"],
         "←  →" to DesktopStrings["d_shortcut_seek", "Seek 5 seconds (Shift for 15)"],
         "Ctrl + ←  →" to DesktopStrings["d_shortcut_prev_next", "Previous or next song"],
-        "↑  ↓" to DesktopStrings["d_shortcut_volume", "Volume up or down"],
+        "↑  ↓  or  Shift + K  J" to DesktopStrings["d_shortcut_volume", "Volume up or down"],
         "M" to DesktopStrings["d_shortcut_mute", "Mute or unmute"],
         "/  or  Ctrl + K" to DesktopStrings["d_shortcut_search", "Focus search"],
         "Ctrl + +  −  0" to DesktopStrings["d_shortcut_zoom", "Zoom in, out or reset"],

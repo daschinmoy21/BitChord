@@ -155,7 +155,7 @@ private fun desktopMain() = application {
                 close = { if (DesktopWindowVisibility.onCloseRequest()) exitApplication() },
             )
         }
-        LaunchedEffect(Unit) { DesktopGlobalKeys.install() }
+        LaunchedEffect(composeWindow) { DesktopGlobalKeys.install(composeWindow) }
         // Under Xwayland the window can be focused without Java hearing of it; see [DesktopX11Focus].
         LaunchedEffect(composeWindow) { DesktopX11Focus.install(composeWindow) }
         LaunchedEffect(composeWindow) { DesktopKeyboardHints.install(composeWindow) }

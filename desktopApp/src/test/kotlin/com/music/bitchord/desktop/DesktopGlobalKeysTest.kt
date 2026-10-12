@@ -2,8 +2,11 @@ package com.music.bitchord.desktop
 
 import androidx.compose.ui.focus.FocusManager
 import com.music.bitchord.ui.components.TextEntryFocus
+import java.awt.Canvas
+import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import java.lang.reflect.Proxy
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,7 +23,29 @@ class DesktopGlobalKeysTest {
         meta: Boolean = false,
         typing: Boolean = false,
         shift: Boolean = false,
-    ) = DesktopGlobalKeys.actionFor(key, ctrl, alt, meta, typing, shift)
+        volumeShortcutsActive: Boolean = true,
+    ) = DesktopGlobalKeys.actionFor(key, ctrl, alt, meta, typing, shift, volumeShortcutsActive)
+
+    @Test
+    fun `shift vim volume keys preserve scrolling and search and leave typing alone`() {
+        listOf(KeyEvent.VK_J, KeyEvent.VK_K).forEach { key ->
+            val volume = if (key == KeyEvent.VK_J) DesktopGlobalAction.VOLUME_DOWN else DesktopGlobalAction.VOLUME_UP
+            val scroll = if (key == KeyEvent.VK_J) DesktopGlobalAction.SCROLL_DOWN else DesktopGlobalAction.SCROLL_UP
+            assertEquals(volume, action(key, shift = true))
+            assertEquals(scroll, action(key))
+            assertNull(action(key, typing = true, shift = true))
+            assertNull(action(key, ctrl = true, shift = true))
+            assertNull(action(key, alt = true, shift = true))
+            assertNull(action(key, meta = true, shift = true))
+            assertNull(action(key, shift = true, volumeShortcutsActive = false))
+        }
+        assertEquals(DesktopGlobalAction.FOCUS_SEARCH, action(KeyEvent.VK_K, ctrl = true, typing = true))
+        listOf(KeyEvent.VK_UP, KeyEvent.VK_DOWN).forEach { key ->
+            assertNull(action(key, typing = true))
+            assertNull(action(key, shift = true))
+            assertNull(action(key, volumeShortcutsActive = false))
+        }
+    }
 
     @Test
     fun `arrows seek, and shift seeks further`() {
@@ -151,6 +176,73 @@ class DesktopGlobalKeysTest {
     fun `the steps run from small to large and include normal size`() {
         assertTrue(DesktopUiScale.STEPS.contains(1.0f))
         assertEquals(DesktopUiScale.STEPS.sorted(), DesktopUiScale.STEPS)
+    }
+}
+
+/** Volume changes on presses only; typed characters and releases must follow the same guards. */
+class DesktopVolumeKeystrokeTest {
+    private val source = Canvas()
+    private val adjustments = mutableListOf<Float>()
+
+    @AfterTest
+    fun clearCallback() {
+        DesktopGlobalKeys.stepVolume = null
+    }
+
+    private fun stroke(
+        key: Int,
+        char: Char,
+        modifiers: Int = InputEvent.SHIFT_DOWN_MASK,
+        typing: Boolean = false,
+        volumeShortcutsActive: Boolean = true,
+    ): List<Boolean> = listOf(KeyEvent.KEY_PRESSED, KeyEvent.KEY_TYPED, KeyEvent.KEY_RELEASED).map { phase ->
+        DesktopGlobalKeys.handleVolumeKeyEvent(
+            KeyEvent(source, phase, 0L, modifiers, if (phase == KeyEvent.KEY_TYPED) KeyEvent.VK_UNDEFINED else key, char),
+            textEntryActive = typing,
+            volumeShortcutsActive = volumeShortcutsActive,
+        )
+    }
+
+    @Test
+    fun `shift vim keystrokes adjust once and consume their typed echo`() {
+        DesktopGlobalKeys.stepVolume = { adjustments.add(it); true }
+        assertEquals(listOf(true, true, true), stroke(KeyEvent.VK_K, 'K'))
+        assertEquals(listOf(true, true, true), stroke(KeyEvent.VK_J, 'J'))
+        assertEquals(listOf(0.05f, -0.05f), adjustments)
+    }
+
+    @Test
+    fun `typing and other shortcuts keep every phase of shift vim keys`() {
+        DesktopGlobalKeys.stepVolume = { adjustments.add(it); true }
+        listOf(KeyEvent.VK_J to 'J', KeyEvent.VK_K to 'K').forEach { (key, char) ->
+            assertEquals(listOf(false, false, false), stroke(key, char, modifiers = 0))
+            assertEquals(listOf(false, false, false), stroke(key, char, typing = true))
+            assertEquals(listOf(false, false, false), stroke(key, char, volumeShortcutsActive = false))
+            listOf(InputEvent.CTRL_DOWN_MASK, InputEvent.ALT_DOWN_MASK, InputEvent.META_DOWN_MASK)
+                .forEach { modifiers ->
+                    assertEquals(listOf(false, false, false), stroke(key, char, modifiers or InputEvent.SHIFT_DOWN_MASK))
+                }
+        }
+        assertTrue(adjustments.isEmpty())
+    }
+
+    @Test
+    fun `volume keys pass through when the player callback is absent`() {
+        DesktopGlobalKeys.stepVolume = null
+        assertEquals(listOf(false, false, false), stroke(KeyEvent.VK_J, 'J'))
+        assertEquals(listOf(false, false, false), stroke(KeyEvent.VK_K, 'K'))
+    }
+
+    @Test
+    fun `keys already handled by a focused control never change volume`() {
+        DesktopGlobalKeys.stepVolume = { adjustments.add(it); true }
+        listOf(KeyEvent.VK_UP, KeyEvent.VK_DOWN, KeyEvent.VK_J, KeyEvent.VK_K).forEach { key ->
+            val modifiers = if (key == KeyEvent.VK_J || key == KeyEvent.VK_K) InputEvent.SHIFT_DOWN_MASK else 0
+            val event = KeyEvent(source, KeyEvent.KEY_PRESSED, 0L, modifiers, key, KeyEvent.CHAR_UNDEFINED)
+            event.consume()
+            assertFalse(DesktopGlobalKeys.handleVolumeKeyEvent(event, textEntryActive = false, volumeShortcutsActive = true))
+        }
+        assertTrue(adjustments.isEmpty())
     }
 }
 

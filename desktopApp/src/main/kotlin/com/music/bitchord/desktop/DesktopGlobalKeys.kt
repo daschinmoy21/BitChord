@@ -1,11 +1,17 @@
 package com.music.bitchord.desktop
 
+import androidx.compose.runtime.tooling.ComposeToolingApi
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.awt.ComposeWindow
 import com.music.bitchord.ui.components.TextEntryFocus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.awt.KeyEventDispatcher
+import java.awt.KeyEventPostProcessor
 import java.awt.KeyboardFocusManager
+import java.awt.Window
 import java.awt.event.KeyEvent
+import javax.swing.SwingUtilities
 
 /** What the whole-window keys can ask for. */
 internal enum class DesktopGlobalAction(
@@ -104,6 +110,7 @@ internal object DesktopGlobalKeys {
         meta: Boolean,
         textEntryActive: Boolean,
         shift: Boolean = false,
+        volumeShortcutsActive: Boolean = true,
     ): DesktopGlobalAction? {
         if (alt || meta) return null
         if (ctrl) {
@@ -129,12 +136,14 @@ internal object DesktopGlobalKeys {
                 if (shift) DesktopGlobalAction.SEEK_BACK_LONG else DesktopGlobalAction.SEEK_BACK
             KeyEvent.VK_RIGHT ->
                 if (shift) DesktopGlobalAction.SEEK_FORWARD_LONG else DesktopGlobalAction.SEEK_FORWARD
-            KeyEvent.VK_UP -> if (shift) null else DesktopGlobalAction.VOLUME_UP
-            KeyEvent.VK_DOWN -> if (shift) null else DesktopGlobalAction.VOLUME_DOWN
+            KeyEvent.VK_UP -> DesktopGlobalAction.VOLUME_UP.takeIf { !shift && volumeShortcutsActive }
+            KeyEvent.VK_DOWN -> DesktopGlobalAction.VOLUME_DOWN.takeIf { !shift && volumeShortcutsActive }
             KeyEvent.VK_M -> if (shift) null else DesktopGlobalAction.MUTE
             // Scrolling the page, as Vimium and less do.
-            KeyEvent.VK_J -> if (shift) null else DesktopGlobalAction.SCROLL_DOWN
-            KeyEvent.VK_K -> if (shift) null else DesktopGlobalAction.SCROLL_UP
+            KeyEvent.VK_J -> if (shift) DesktopGlobalAction.VOLUME_DOWN.takeIf { volumeShortcutsActive }
+                else DesktopGlobalAction.SCROLL_DOWN
+            KeyEvent.VK_K -> if (shift) DesktopGlobalAction.VOLUME_UP.takeIf { volumeShortcutsActive }
+                else DesktopGlobalAction.SCROLL_UP
             KeyEvent.VK_D -> if (shift) null else DesktopGlobalAction.PAGE_DOWN
             KeyEvent.VK_U -> if (shift) null else DesktopGlobalAction.PAGE_UP
             // Shift and H or L: back and forward, as Vimium has them.
@@ -175,6 +184,40 @@ internal object DesktopGlobalKeys {
     private const val ZOOM_CHARS = "=+-0"
 
     private var spaceHeld = false
+    private var volumeShortcutWindow: ComposeWindow? = null
+
+    @OptIn(ComposeToolingApi::class, ExperimentalComposeUiApi::class)
+    private val volumePostProcessor = KeyEventPostProcessor { event ->
+        val eventWindow = event.component as? Window ?: SwingUtilities.getWindowAncestor(event.component)
+        val window = volumeShortcutWindow
+        handleVolumeKeyEvent(
+            event,
+            textEntryActive = TextEntryFocus.active,
+            // Dialogs and popups own their keys, including popups drawn on the main canvas.
+            volumeShortcutsActive = window != null && eventWindow === window && window.semanticsOwners.size == 1,
+        )
+    }
+
+    /** Focused controls and local bindings get first chance; only unused volume keys reach here. */
+    internal fun handleVolumeKeyEvent(
+        event: KeyEvent,
+        textEntryActive: Boolean,
+        volumeShortcutsActive: Boolean,
+    ): Boolean {
+        if (event.isConsumed || !volumeShortcutsActive || textEntryActive) return false
+        val keyCode = if (event.id == KeyEvent.KEY_TYPED) {
+            when (event.keyChar) {
+                'J' -> KeyEvent.VK_J
+                'K' -> KeyEvent.VK_K
+                else -> return false
+            }
+        } else event.keyCode
+        val action = actionFor(keyCode, event.isControlDown, event.isAltDown, event.isMetaDown,
+            textEntryActive, event.isShiftDown, volumeShortcutsActive)
+        if (action != DesktopGlobalAction.VOLUME_UP && action != DesktopGlobalAction.VOLUME_DOWN) return false
+        if (stepVolume == null) return false
+        return if (event.id == KeyEvent.KEY_PRESSED) perform(action, keyCode) else true
+    }
 
     // Keys taken on their press, so their release (and typed echo) is taken with them.
     private val heldKeys = mutableMapOf<Int, DesktopGlobalAction>()
@@ -236,6 +279,10 @@ internal object DesktopGlobalKeys {
             textEntryActive = TextEntryFocus.active,
             shift = event.isShiftDown,
         )
+        // Volume is handled after Compose, so arrows can still navigate menus and adjust sliders.
+        if (action == DesktopGlobalAction.VOLUME_UP || action == DesktopGlobalAction.VOLUME_DOWN) {
+            return@KeyEventDispatcher false
+        }
         if (action != null && isPlaybackKeyAction(action)) {
             if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
             return@KeyEventDispatcher handlePlaybackPress(event.keyCode, action)
@@ -309,10 +356,12 @@ internal object DesktopGlobalKeys {
     private var installed = false
 
     @Synchronized
-    fun install() {
+    fun install(window: ComposeWindow) {
+        volumeShortcutWindow = window
         if (installed) return
         installed = true
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher)
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventPostProcessor(volumePostProcessor)
     }
 }
 
