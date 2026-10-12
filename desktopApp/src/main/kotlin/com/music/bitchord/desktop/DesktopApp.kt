@@ -3148,6 +3148,13 @@ fun BitChordDesktopApp() {
                         // One layer at a time, innermost first: the player's own side panel, then
                         // the player.
                         Key.Escape -> when {
+                            // Leave typing mode first; a second Escape can close the surrounding
+                            // page or panel without requiring a click away from the input.
+                            TextEntryFocus.active -> {
+                                searchFocusRequested = false
+                                focusManager.clearFocus(force = true)
+                                true
+                            }
                             // The player's own layers first — the lyrics, the queue, a
                             // drawer — in the order Android's back reaches them.
                             overlays.nowPlaying && PlayerBack.dispatch() -> true
