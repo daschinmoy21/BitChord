@@ -595,6 +595,7 @@
     <string name="sort_music">Müziği sırala</string>
     <string name="sort_title_ascending">Alfabetik (A\'dan Z\'ye)</string>
     <string name="sort_title_descending">Alfabetik (Z\'den A\'ya)</string>
+    <string name="sort_recently_played">Son çalınanlar</string>
     <string name="sort_date_added">Eklenme tarihi (önce en yeni)</string>
     <string name="sort_date_modified">Değiştirilme tarihi (önce en yeni)</string>
     <string name="use_all_audio_folders">Tüm ses klasörlerini kullan</string>

@@ -795,6 +795,13 @@ fun BitChordDesktopApp() {
     var audioQuality by remember { mutableStateOf(persistence.audioQuality()) }
     var sourceConfigs by remember { mutableStateOf(persistence.sourceConfigs()) }
     var serverAlbums by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
+    var albumSourceFilter by remember {
+        mutableStateOf(
+            runCatching {
+                DesktopAlbumSourceFilter.valueOf(persistence.string(KEY_ALBUM_SOURCE_FILTER, DesktopAlbumSourceFilter.ALL.name))
+            }.getOrDefault(DesktopAlbumSourceFilter.ALL),
+        )
+    }
     LaunchedEffect(sourceConfigs) {
         serverAlbums = withContext(Dispatchers.IO) {
             DesktopNavidromeSource.libraryAlbums(sourceConfigs)
@@ -1962,6 +1969,7 @@ fun BitChordDesktopApp() {
         val songId = playback.song?.videoId ?: return@LaunchedEffect
         if (!playback.isPlaying) return@LaunchedEffect
         DesktopPlaybackTracker.onPlaying(songId)
+        playback.song?.let { DesktopAppUiHost.recordLibraryPlay(it) }
         while (currentCoroutineContext().isActive) {
             delay(HISTORY_SAMPLE_MS)
             val snapshot = playbackEngine.state.value
@@ -4135,14 +4143,34 @@ fun BitChordDesktopApp() {
                             contentPadding = sharedPagePadding,
                         )
                         destination == DesktopDestination.LIBRARY && libraryShowAll != null -> Column(Modifier.fillMaxSize()) {
+                            val openShelf = libraryShowAll!!
+                            // Only the Albums grid mixes sources, and only once a server has added to it.
+                            val canFilterAlbums = openShelf.title == ALBUMS_SHELF && serverAlbums.isNotEmpty()
                             // The phone keeps the grid's sort beside it, in the bar above; here it sits
                             // at the end of the row the way back is on.
                             Row(
-                                Modifier.fillMaxWidth().padding(top = 8.dp, end = 12.dp),
-                                horizontalArrangement = Arrangement.End,
-                            ) { DesktopLibrarySortMenu() }
+                                Modifier.fillMaxWidth().padding(top = 8.dp, start = PAGE_GUTTER, end = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (canFilterAlbums) {
+                                    DesktopAlbumSourceFilter.entries.forEach { option ->
+                                        FilterChip(
+                                            colors = desktopChipColors(),
+                                            selected = albumSourceFilter == option,
+                                            onClick = {
+                                                albumSourceFilter = option
+                                                persistence.saveString(KEY_ALBUM_SOURCE_FILTER, option.name)
+                                            },
+                                            label = { Text(option.label()) },
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.weight(1f))
+                                DesktopLibrarySortMenu()
+                            }
                             LibraryGridPage(
-                                shelf = libraryShowAll!!,
+                                shelf = if (canFilterAlbums) openShelf.filteredBySource(albumSourceFilter) else openShelf,
                                 gridState = libraryGridState,
                                 onItemClick = ::openLibraryItem,
                                 onItemLongPress = { item -> if (item.videoId != null) openMenu(item.toSong()) },
@@ -5096,6 +5124,7 @@ internal const val KEY_DONT_REPEAT_SUGGESTIONS = "dont_repeat_suggestions"
 private const val POSITION_SAVE_INTERVAL_NANOS = 5_000_000_000L
 
 internal const val KEY_LIBRARY_SORT = "library_sort"
+internal const val KEY_ALBUM_SOURCE_FILTER = "library_album_source_filter"
 
 private const val MESH_SOURCE_PX = 120
 

@@ -612,6 +612,7 @@
     <string name="sort_music">Ordina musica</string>
     <string name="sort_title_ascending">Alfabetico (A-Z)</string>
     <string name="sort_title_descending">Alfabetico (Z-A)</string>
+    <string name="sort_recently_played">Ascoltati di recente</string>
     <string name="sort_date_added">Data aggiunta (più recenti prima)</string>
     <string name="sort_date_modified">Data modifica (più recenti prima)</string>
     <string name="use_all_audio_folders">Usa tutte le cartelle audio</string>

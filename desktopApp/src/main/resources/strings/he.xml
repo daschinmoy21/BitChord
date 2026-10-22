@@ -517,6 +517,7 @@
     <string name="sort_music">מיין מוזיקה</string>
     <string name="sort_title_ascending">אלפביתי (א עד ת)</string>
     <string name="sort_title_descending">אלפביתי (ת עד א)</string>
+    <string name="sort_recently_played">הושמע לאחרונה</string>
     <string name="sort_date_added">תאריך הוספה (מהחדש לישן)</string>
     <string name="sort_date_modified">תאריך שינוי (מהחדש לישן)</string>
     <string name="use_all_audio_folders">השתמש בכל תיקיות השמע</string>

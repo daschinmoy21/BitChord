@@ -45,9 +45,14 @@ import com.music.bitchord.data.model.SearchHistoryEntity
 import com.music.bitchord.data.settings.LibrarySort
 import com.music.bitchord.data.settings.LibraryViewType
 import com.music.bitchord.ui.AppUiHost
+import com.music.bitchord.ui.libraryRecentTitleKey
+import com.music.bitchord.data.model.PlaybackSourceType
+import com.music.bitchord.data.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 
@@ -87,6 +92,32 @@ internal object DesktopAppUiHost : AppUiHost {
         _librarySort.value = value
     }
 
+    private val _libraryRecentlyPlayed = MutableStateFlow(loadRecentlyPlayed())
+    override val libraryRecentlyPlayed: StateFlow<Map<String, Long>> = _libraryRecentlyPlayed
+
+    /**
+     * Notes that [song] started playing now, under the album or playlist it was started from and
+     * the album it belongs to, for the Library's Recently played sort.
+     */
+    fun recordLibraryPlay(song: Song, atMs: Long = System.currentTimeMillis()) {
+        val keys = listOfNotNull(
+            song.playbackSourceId?.takeIf { song.playbackSourceType == PlaybackSourceType.BROWSE && it.isNotBlank() },
+            song.albumId?.takeIf(String::isNotBlank),
+            song.albumName?.takeIf(String::isNotBlank)?.let(::libraryRecentTitleKey),
+        )
+        if (keys.isEmpty()) return
+        val next = (_libraryRecentlyPlayed.value + keys.associateWith { atMs })
+            .entries.sortedByDescending { it.value }
+            .take(MAX_RECENT_PLAYS)
+            .associate { it.key to it.value }
+        _libraryRecentlyPlayed.value = next
+        persistence.saveString(KEY_LIBRARY_RECENT_PLAYS, recentJson.encodeToString(recentSerializer, next))
+    }
+
+    private fun loadRecentlyPlayed(): Map<String, Long> = runCatching {
+        recentJson.decodeFromString(recentSerializer, persistence.string(KEY_LIBRARY_RECENT_PLAYS, "{}"))
+    }.getOrDefault(emptyMap())
+
     /** Kept current by the app, which owns the download list — see `BitChordDesktopApp`. */
     val downloaded = MutableStateFlow<Set<String>>(emptySet())
 
@@ -98,6 +129,12 @@ internal object DesktopAppUiHost : AppUiHost {
 
     private const val KEY_SWIPE_PLAY_NEXT = "swipe_play_next"
     private const val KEY_HOME_RECENTS_VIEW = "home_recents_view"
+    private const val KEY_LIBRARY_RECENT_PLAYS = "library_recent_plays"
+
+    /** Plenty for a library's albums and playlists, and the title keys beside them. */
+    private const val MAX_RECENT_PLAYS = 1_000
+    private val recentJson = Json { ignoreUnknownKeys = true }
+    private val recentSerializer = MapSerializer(String.serializer(), Long.serializer())
 }
 
 /**
@@ -199,6 +236,7 @@ internal fun DesktopLibrarySortMenu() {
                                 LibrarySort.DEFAULT -> DesktopStrings["sort_default", "Default order"]
                                 LibrarySort.TITLE_ASC -> DesktopStrings["sort_title_ascending", "Alphabetical (A to Z)"]
                                 LibrarySort.TITLE_DESC -> DesktopStrings["sort_title_descending", "Alphabetical (Z to A)"]
+                                LibrarySort.RECENTLY_PLAYED -> DesktopStrings["sort_recently_played", "Recently played"]
                             },
                         )
                     },
