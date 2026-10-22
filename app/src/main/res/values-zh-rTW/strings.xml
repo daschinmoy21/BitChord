@@ -564,6 +564,7 @@
     <string name="sort_music">排序方式</string>
     <string name="sort_title_ascending">按字母順序（A 到 Z）</string>
     <string name="sort_title_descending">按字母順序（Z 到 A）</string>
+    <string name="sort_recently_played">最近播放</string>
     <string name="sort_date_added">新增日期（最新優先）</string>
     <string name="sort_date_modified">修改日期（最新優先）</string>
     <string name="use_all_audio_folders">使用所有音訊資料夾</string>
