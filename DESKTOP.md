@@ -1,9 +1,8 @@
 # BitChord Desktop
 
-BitChord now has a Kotlin Multiplatform shared module and a Compose Multiplatform
-desktop application for Linux and Windows. Desktop uses the JVM target, which is
-the supported Compose Multiplatform desktop model; macOS is intentionally not a
-configured target.
+BitChord has a Kotlin Multiplatform shared module and a Compose Multiplatform
+desktop application for macOS, Linux, and Windows. Desktop uses the JVM target, which is
+the supported Compose Multiplatform desktop model.
 
 This personal fork focuses on NixOS with niri. It keeps the shared Android and Windows
 code while improving the Linux desktop experience; selected changes are intended for upstream later.
@@ -50,7 +49,7 @@ The AppImage launcher applies the same AWT setting in a Wayland session.
 To validate a desktop change:
 
 ```bash
-nix develop --command ./gradlew :shared:jvmTest :desktopApp:test
+nix develop --command ./gradlew :shared:jvmTest :desktopUi:jvmTest :desktopApp:test
 nix develop --command ./gradlew :desktopApp:createDistributable
 ```
 
@@ -89,6 +88,14 @@ for available assets:
 | Windows | `BitChord-<version>-windows-x64.msi` | The same thing for anyone who deploys by MSI. |
 | Windows | `BitChord-<version>-windows-x64-portable.zip` | Unzip anywhere and run `BitChord.exe`; preferences and cache use normal user directories. |
 
+**macOS Gatekeeper.** Unsigned binaries built locally or downloaded outside the Mac App Store
+may trigger a macOS security prompt ("BitChord is damaged and can't be opened" or "unidentified developer").
+To clear the quarantine flag, run:
+
+```bash
+xattr -cr /Applications/BitChord.app
+```
+
 The Linux packages are built on Ubuntu 22.04 against its glibc, so they install
 on compatible conventional Linux distributions. On NixOS, use the AppImage through `appimage-run` or build from the Nix shell.
 
@@ -111,6 +118,20 @@ itself, because Windows expects it to be a system component.
 jpackage builds a package by driving the target platform's own tooling, so each
 one has to be built on the platform it is for. This is what CI does; see
 [`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+On macOS:
+
+```bash
+# Builds the disk image (.dmg) installer
+./gradlew :desktopApp:packageDmg
+
+# Builds the .pkg installer
+./gradlew :desktopApp:packagePkg
+
+# Standalone BitChord.app bundle
+./gradlew :desktopApp:createDistributable
+# Output is at: desktopApp/build/compose/binaries/main/app/BitChord.app
+```
 
 On Linux — `rpm`, `fakeroot` and `binutils` must be installed for the packages,
 and `file` for the AppImage:

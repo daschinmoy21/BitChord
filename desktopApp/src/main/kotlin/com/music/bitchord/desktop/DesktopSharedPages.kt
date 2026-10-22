@@ -174,6 +174,53 @@ internal object DesktopSearchHistory {
 }
 
 /**
+ * Which sidebar rows the listener has tucked away, and what each was called.
+ *
+ * Apple Music lets you hide the sidebar entries you never open and bring them
+ * back later; the desktop does the same for its secondary destinations and its
+ * playlists. The label is kept beside the key so a hidden playlist that is not
+ * in the currently-loaded shelf — Liked Music on a slow fetch, or one since
+ * deleted upstream — can still be named in the "restore" menu rather than
+ * showing up as a bare id.
+ *
+ * The primary destinations (Home, Explore, Library, Search) and Settings are
+ * deliberately not hideable, so there is always a way back to this menu and no
+ * way to strand the listener on an empty shell.
+ */
+internal object DesktopSidebarVisibility {
+
+    private val persistence = DesktopPersistence()
+    private val json = Json { ignoreUnknownKeys = true }
+    private val serializer = MapSerializer(String.serializer(), String.serializer())
+
+    private val _hidden = MutableStateFlow(load())
+
+    /** Hidden row key to the label it was hidden under. */
+    val hidden: StateFlow<Map<String, String>> = _hidden
+
+    fun isHidden(key: String) = key in _hidden.value
+
+    fun hide(key: String, label: String) {
+        if (key.isBlank()) return
+        save(_hidden.value + (key to label))
+    }
+
+    fun show(key: String) = save(_hidden.value - key)
+
+    fun showAll() = save(emptyMap())
+
+    private fun save(value: Map<String, String>) {
+        _hidden.value = value
+        persistence.saveString(KEY, json.encodeToString(serializer, value))
+    }
+
+    private fun load(): Map<String, String> =
+        runCatching { json.decodeFromString(serializer, persistence.string(KEY, "{}")) }.getOrDefault(emptyMap())
+
+    private const val KEY = "sidebar_hidden"
+}
+
+/**
  * Opens a page's menus where the pointer is.
  *
  * The shared pages say "this row was held" — a long press on the phone, a
