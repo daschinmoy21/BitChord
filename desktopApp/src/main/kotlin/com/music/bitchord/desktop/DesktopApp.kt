@@ -13,11 +13,15 @@ import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.pointer.isBackPressed
 import androidx.compose.ui.input.pointer.isForwardPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.mutableStateListOf
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.SourceQualityBadge
+import com.music.bitchord.ui.components.sourceQualityBadge
+import com.music.bitchord.ui.components.contextClick
 import com.music.bitchord.ui.components.trackColumnWidth
 import com.music.bitchord.ui.replay.ReplayCreditCard
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -42,6 +46,7 @@ import com.music.bitchord.playback.QueueTimeline.asQueueEntry
 import com.music.bitchord.data.listentogether.partyQueueIndexOf
 import com.music.bitchord.data.listentogether.partyUpcomingAfter
 import com.music.bitchord.ui.LyricsProviderState
+import com.music.bitchord.data.lyrics.LyricsSource
 import com.music.bitchord.ui.player.LyricsSidePanel
 import com.music.bitchord.ui.player.NowPlayingScreen
 import com.music.bitchord.ui.player.QueueSidePanel
@@ -132,6 +137,7 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FastForward
@@ -238,7 +244,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -300,6 +308,7 @@ import com.music.bitchord.data.model.artworkAt
 import com.music.bitchord.data.model.durationMillis
 import com.music.bitchord.data.model.isSameTrackAs
 import com.music.bitchord.data.model.normalizedArtistName
+import com.music.bitchord.data.model.playingRowMatcher
 import com.music.bitchord.data.model.withoutRepeatsOf
 import com.music.bitchord.data.settings.AutomixPerformanceMode
 import com.music.bitchord.data.settings.LastPlayerScreen
@@ -418,6 +427,9 @@ private const val SCROBBLE_THRESHOLD_MS = 180_000L
 
 /** Used for tracking restart of the current song when previous button is pressed. */
 private const val BACK_RESTARTS_AFTER_MS = 10_000L
+
+/** How long a manual skip takes to blend into the next track when Automix on skip is on. */
+private const val SKIP_MIX_ON_SKIP_SECONDS = 15
 
 /** How long the supplier waits for the server to echo an AutoPlay queue addition. */
 private const val PARTY_AUTOPLAY_ECHO_TIMEOUT_MS = 5_000L
@@ -675,6 +687,12 @@ fun BitChordDesktopApp() {
     var autoplaySeed by remember { mutableStateOf<String?>(null) }
     var autoplayJob by remember { mutableStateOf<Job?>(null) }
     var automix by remember { mutableStateOf(persistence.boolean("automix", false)) }
+    // A manual skip blends into the already-prepared next track over ~15s instead of cutting.
+    var automixOnSkip by remember { mutableStateOf(persistence.boolean("automix_on_skip", false)) }
+    // Apple-style Automix phrase length in bars: 0 = adaptive (default), 8 or 16 = fixed.
+    var automixPhraseBars by remember {
+        mutableStateOf(persistence.string("automix_phrase_bars", "0").toIntOrNull()?.let { if (it == 8 || it == 16) it else 0 } ?: 0)
+    }
     var automixPerformance by remember {
         mutableStateOf(
             runCatching { AutomixPerformanceMode.valueOf(persistence.string("automix_performance", "BALANCED")) }
@@ -1381,6 +1399,19 @@ fun BitChordDesktopApp() {
 
     fun playNext() {
         if (DesktopListenTogether.state.value.controlsLocked) return
+        // Automix on skip: when enabled and the next deck is already prepared, blend into it over a
+        // short crossfade instead of cutting. The blend's own hand-off advances the queue, so a
+        // successful mix returns here without touching liveQueue; anything else falls through to the
+        // ordinary skip below.
+        if (automixOnSkip && repeatMode != DesktopRepeatMode.ONE) {
+            val currentId = selectedSong?.videoId
+            val upcoming = currentId?.let {
+                liveQueue.followingFor(it, repeatAll = repeatMode == DesktopRepeatMode.ALL)
+            }
+            if (upcoming != null && playbackEngine.beginSkipMix(upcoming.videoId, SKIP_MIX_ON_SKIP_SECONDS)) {
+                return
+            }
+        }
         when {
             liveQueue.hasNext -> {
                 liveQueue = liveQueue.next()
@@ -1435,6 +1466,7 @@ fun BitChordDesktopApp() {
         playlistTarget = null
         overlays.rename = false
         overlays.delete = false
+        overlays.reorder = false
         playlistError = null
         playlistBusy = false
     }
@@ -1694,6 +1726,12 @@ fun BitChordDesktopApp() {
                 onNext = ::playNext,
                 onPrevious = ::playPrevious,
                 onStop = ::pauseFromUser,
+                onSeek = { positionMs ->
+                    if (!DesktopListenTogether.state.value.controlsLocked) {
+                        playbackEngine.seekTo(positionMs)
+                        partySync.onLocalIntent()
+                    }
+                },
             ),
         )
         onDispose { DesktopWindowsMedia.stop() }
@@ -1729,9 +1767,12 @@ fun BitChordDesktopApp() {
     // the next song at a different moment and be dragged back by a correcting seek. The transition a
     // party shares is the plain one. The settings themselves are left alone and come back after.
     val inParty = partyState.inParty
-    LaunchedEffect(automix, crossfadeSeconds, inParty, audioQuality, selectedSong?.videoId, queue, liveQueue.index, shuffle, repeatMode) {
+    LaunchedEffect(automix, automixOnSkip, automixPhraseBars, crossfadeSeconds, inParty, audioQuality, selectedSong?.videoId, queue, liveQueue.index, shuffle, repeatMode) {
         playbackEngine.setAutomixEnabled(automix && !inParty)
+        playbackEngine.setAutomixPhraseBars(if (automix && !inParty) automixPhraseBars else 0)
         playbackEngine.setCrossfadeSeconds(if (inParty) 0 else crossfadeSeconds)
+        // A party mixes only with the plain transition, so a skip there cuts like it always did.
+        playbackEngine.setSkipMixEnabled(automixOnSkip && !inParty)
         // Exactly what Next would play, so a crossfade can never blend into anything else. Shuffle
         // is already the queue's order; picking "the first track that is not this one" under it
         // blended into a song from history whenever the current one was not at the top.
@@ -1836,6 +1877,19 @@ fun BitChordDesktopApp() {
     var lyrics by remember { mutableStateOf<DesktopLyrics?>(null) }
     // The provider picked for this track in the player's lyrics drawer, if any.
     var lyricsOnly by remember(selectedSong?.videoId) { mutableStateOf<String?>(null) }
+    // A title and artist typed into the song menu's lyrics search, overriding the
+    // track's own credits for the lookup — for a cover or a mislabelled upload.
+    var lyricsQuery by remember(selectedSong?.videoId) { mutableStateOf<Pair<String, String>?>(null) }
+    // Bumped on every search so re-running the same query still refetches.
+    var lyricsSearchTick by remember(selectedSong?.videoId) { mutableStateOf(0) }
+    // What each provider's most recent race turned up, so the song menu's
+    // provider drawer can say "Found" or "Not found" per source, not just name
+    // the winner. It is keyed on the track and is only ever added to, never
+    // cleared mid-track: a repeat search a cache answers straight away fires no
+    // callbacks, so clearing on start would blank the very states it should hold.
+    val lyricsProviderResults = remember(selectedSong?.videoId) {
+        mutableStateOf<Map<LyricsSource, LyricsProviderState>>(emptyMap())
+    }
     var lyricsLoading by remember { mutableStateOf(false) }
     var lyricsError by remember { mutableStateOf<String?>(null) }
     var canvas by remember { mutableStateOf<DesktopCanvasArtwork?>(null) }
@@ -1861,6 +1915,8 @@ fun BitChordDesktopApp() {
         lyricsOn,
         lyricsOrder,
         lyricsOnly,
+        lyricsQuery,
+        lyricsSearchTick,
     ) {
         val current = selectedSong
         lyrics = null
@@ -1883,11 +1939,44 @@ fun BitChordDesktopApp() {
             return@LaunchedEffect
         }
         lyricsLoading = true
-        DesktopLyricsClient.lookup(current, length, only = lyricsOnly).fold(
+        // The manual search asks the same providers under the typed words rather
+        // than the track's own credits; a provider switch keeps that query.
+        val probe = lyricsQuery?.let { (title, artist) -> current.copy(title = title, artist = artist) } ?: current
+        DesktopLyricsClient.lookup(
+            probe,
+            length,
+            only = lyricsOnly,
+            // Each provider reports itself as the race runs; the callback is on
+            // the IO thread, so the map is updated back on the composition's own.
+            onSourceResult = { source, found ->
+                scope.launch {
+                    lyricsProviderResults.value += source to
+                        if (found) LyricsProviderState.FOUND else LyricsProviderState.NOT_FOUND
+                }
+            },
+        ).fold(
             onSuccess = { lyrics = it },
             onFailure = { lyricsError = it.message ?: "Lyrics unavailable" },
         )
         lyricsLoading = false
+    }
+
+    // A manual ask from the song menu's lyrics drawer, for a track whose automatic
+    // lookup came up empty and whose real title or artist the listener knows
+    // better than the tag. It just sets the query and nudges the effect above,
+    // which owns the loading state and the result — so the drawer's provider
+    // list updates through the same path as the automatic lookup.
+    fun searchLyrics(title: String, artist: String) {
+        lyricsQuery = title to artist
+        lyricsSearchTick++
+    }
+
+    // The song menu's lyrics offset nudges the whole synced lyric against the clock. It is a
+    // per-track adjustment, so a new track starts back at zero; the desktop owns the reset so the
+    // phone's sheet, which carries the offset across tracks, is left alone.
+    val lyricsOffsetMs by DesktopPlayerSettings.lyricsOffsetMs.collectAsState()
+    LaunchedEffect(selectedSong?.videoId) {
+        DesktopPlayerSettings.setLyricsOffsetMs(0)
     }
 
     LaunchedEffect(selectedSong?.videoId, animatedCanvas) {
@@ -1950,7 +2039,7 @@ fun BitChordDesktopApp() {
     }
     // Keyed on the same things, plus the rate: Discord counts the bar down on
     // its own clock, so only a change to what it was told is worth another push.
-    LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs, playbackSpeed) {
+    LaunchedEffect(playback.song?.videoId, playback.isPlaying, playback.durationMs, playbackSpeed, playback.streamFormat) {
         DesktopDiscordRpc.onPlaybackStateChanged(playback, playbackSpeed)
     }
     // The account's own history on YouTube Music, which is what the home feed is built out of.
@@ -2719,6 +2808,36 @@ fun BitChordDesktopApp() {
     }
 
     /**
+     * Sends a new order for the playlist being read. [original] and [reordered] are the same whole
+     * list of entries — as it was and as the user left it — since a reorder is sent as moves relative
+     * to neighbours and needs every entry to move against.
+     */
+    fun reorderOpenPlaylist(original: List<Song>, reordered: List<Song>) {
+        val collection = openedCollection ?: return
+        playlistBusy = true
+        playlistError = null
+        scope.launch {
+            DesktopSearchClient.reorderPlaylist(
+                collection.playlistId,
+                current = original.mapNotNull { it.setVideoId },
+                target = reordered.mapNotNull { it.setVideoId },
+            ).onSuccess {
+                val current = openedCollection
+                if (current != null && current.browseId == collection.browseId) {
+                    // The whole list arrived to be reordered, so the page now shows all of it and has
+                    // no further page to ask for.
+                    openedCollection = current.copy(songs = reordered, continuation = null)
+                }
+                closePlaylistDialogs()
+                libraryStale = true
+            }.onFailure {
+                playlistBusy = false
+                playlistError = it.message ?: "Could not reorder the playlist"
+            }
+        }
+    }
+
+    /**
      * The account's library, re-read whenever the session behind it changes — signing in, switching
      * channel, signing out.
      */
@@ -2866,6 +2985,21 @@ fun BitChordDesktopApp() {
 
     // The menu the shared player's "…" opens.
     var playerMenuOpen by remember(selectedSong?.videoId) { mutableStateOf(false) }
+    // The player's own overflow (volume, the lyrics/output/queue row, the lyric
+    // footer), raised from the song menu's "More…" and drawn by the shared
+    // player. Held here so the desktop song menu can open it.
+    val playerOverflowOpen = remember(selectedSong?.videoId) { mutableStateOf(false) }
+    // Requests the song menu sends the player (switch lyrics/queue, translate),
+    // flipped here and consumed by it, and the player's state mirrored back so the
+    // menu's rows say what is on screen. Not keyed to the track: the player's own
+    // panel and translation state outlive a skip, so copies recreated per track
+    // would contradict it until it next changed.
+    val playerQueueToggle = remember { mutableStateOf(false) }
+    val playerQueueShowing = remember { mutableStateOf(false) }
+    val playerTranslateToggle = remember { mutableStateOf(false) }
+    val playerShowingTranslation = remember { mutableStateOf(false) }
+    // Where the player's "…" is, in window coordinates, so its menu hangs off it.
+    val playerMenuAnchor = remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
 
     /** The song menu's verbs for [song], as the player sheet offers them. */
     fun playerSongActions(song: Song) = DesktopSongActions(
@@ -2963,10 +3097,37 @@ fun BitChordDesktopApp() {
             .associateWith { source ->
                 when {
                     source == sharedLyricsSource -> LyricsProviderState.FOUND
+                    lyricsProviderResults.value[source] != null -> lyricsProviderResults.value.getValue(source)
                     lyricsLoading -> LyricsProviderState.FETCHING
                     else -> LyricsProviderState.NOT_FETCHED
                 }
             }
+    }
+
+    // Every provider the song menu's lyrics drawer lists — all of them, in the
+    // saved order, not just the enabled ones — each carrying what its last race
+    // turned up so the row can read "Found", "Not found" or "Searching…". The
+    // winner is the one the sheet shows now.
+    val menuLyricsProviders = remember(
+        lyricsOrder,
+        lyricsOn,
+        lyricsOnly,
+        lyricsLoading,
+        lyrics?.source,
+        lyricsProviderResults.value,
+    ) {
+        val currentLabel = lyrics?.source
+        val asked = lyricsOnly?.let { listOf(it) } ?: DesktopLyricsClient.enabledSources(lyricsOrder, lyricsOn)
+        lyricsOrder.map { label ->
+            val source = lyricsSourceNamed(label)
+            val state = when {
+                label == currentLabel -> LyricsProviderState.FOUND
+                source != null && lyricsProviderResults.value[source] != null -> lyricsProviderResults.value.getValue(source)
+                lyricsLoading && label in asked -> LyricsProviderState.FETCHING
+                else -> LyricsProviderState.NOT_FETCHED
+            }
+            DesktopLyricsProviderRow(label, state, label == currentLabel)
+        }
     }
 
     // The queue's edits, for the player's queue and the queue column alike.
@@ -3109,6 +3270,8 @@ fun BitChordDesktopApp() {
         colorScheme = desktopColorScheme(),
         typography = desktopTypography(),
     ) {
+        val ambientBackdrop by DesktopAppearanceSettings.ambientBackdrop.collectAsState()
+        val windowActions = LocalDesktopWindowActions.current
         CompositionLocalProvider(
             LocalContentColor provides Color.White,
             LocalNowPlaying provides selectedSong,
@@ -3116,38 +3279,58 @@ fun BitChordDesktopApp() {
             DesktopFrame(
                 // The phone's page is black, not the near-black of its cards.
                 containerColor = DesktopBackground,
-                // Only Replay dresses itself; everywhere else the chrome sits on the plain surface.
+                // Only Replay dresses itself unless ambient backdrop is on; everywhere else the chrome sits on the plain surface.
                 backdrop = { transparentBase ->
+                    val ambientArtworkUrl = replaySummary.songs.firstOrNull()?.song?.thumbnailUrl
+                        .takeIf { overlays.replay }
+                        ?: selectedSong?.thumbnailUrl.takeIf { ambientBackdrop }
                     DesktopPageBackdrop(
-                        artworkUrl = replaySummary.songs.firstOrNull()?.song?.thumbnailUrl
-                            .takeIf { overlays.replay },
+                        artworkUrl = ambientArtworkUrl,
                         transparentBase = transparentBase,
                     )
                 },
                 modifier = Modifier.onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
-                    when (event.key) {
-                        Key.MediaPlayPause -> {
+                    when {
+                        event.key == Key.MediaPlayPause -> {
                             if (selectedSong != null) togglePlayPauseFromUser()
                             true
                         }
-                        Key.MediaNext -> {
+                        event.key == Key.MediaNext -> {
                             playNext()
                             true
                         }
-                        Key.MediaPrevious -> {
+                        event.key == Key.MediaPrevious -> {
                             playPrevious()
                             true
                         }
-                        Key.DirectionLeft -> if (event.isAltPressed && !overlays.nowPlaying) {
+                        event.key == Key.F11 -> {
+                            DesktopWindowMode.toggle()
+                            true
+                        }
+                        event.key == Key.DirectionLeft && event.isAltPressed && !overlays.nowPlaying -> {
                             goBack()
                             true
-                        } else {
-                            false
+                        }
+                        DesktopPlatform.isMac && event.isMetaPressed && event.key == Key.Comma -> {
+                            openSettings()
+                            true
+                        }
+                        DesktopPlatform.isMac && event.isMetaPressed && event.key == Key.F -> {
+                            searchFocusRequested = true
+                            true
+                        }
+                        DesktopPlatform.isMac && event.isMetaPressed && event.key == Key.W -> {
+                            windowActions?.close?.invoke()
+                            true
+                        }
+                        DesktopPlatform.isMac && event.isMetaPressed && event.key == Key.M -> {
+                            windowActions?.minimize?.invoke()
+                            true
                         }
                         // One layer at a time, innermost first: the player's own side panel, then
                         // the player.
-                        Key.Escape -> when {
+                        event.key == Key.Escape -> when {
                             // Leave typing mode first; a second Escape can close the surrounding
                             // page or panel without requiring a click away from the input.
                             TextEntryFocus.active -> {
@@ -3221,8 +3404,9 @@ fun BitChordDesktopApp() {
                         onOpenLyrics = { overlays.toggleSidePanel(DesktopSidePanel.LYRICS) },
                         onOpenQueue = { overlays.toggleSidePanel(DesktopSidePanel.QUEUE) },
                         sidePanel = overlays.sidePanel,
-                        accountAvatar = activeAccount?.avatar
-                            ?: activeAccount?.profiles?.firstOrNull()?.avatar,
+                        accountAvatar = activeAccount?.profiles?.firstOrNull { it.profileId == activeProfileId }?.avatar?.takeIf { it.isNotBlank() }
+                            ?: activeAccount?.avatar?.takeIf { it.isNotBlank() }
+                            ?: activeAccount?.profiles?.firstOrNull()?.avatar?.takeIf { it.isNotBlank() },
                         onOpenAccounts = { DesktopTrackLog.log("accounts: opening the switcher"); overlays.accounts = true },
                         canGoBack = navHistory.isNotEmpty(),
                         onBack = ::goBack,
@@ -3340,7 +3524,8 @@ fun BitChordDesktopApp() {
                             shuffleEnabled = shuffle,
                             autoplayEnabled = DesktopAutoplay.enabled(partyState, autoplay),
                             signedIn = youtubeSignedIn,
-                            accountName = activeAccount?.name?.takeIf(String::isNotBlank),
+                            accountName = activeAccount?.profiles?.firstOrNull { it.profileId == activeProfileId }?.name?.takeIf(String::isNotBlank)
+                                ?: activeAccount?.name?.takeIf(String::isNotBlank),
                             likeStatus = when (current.videoId) {
                                 in likedIds -> LikeStatus.LIKE
                                 in dislikedIds -> LikeStatus.DISLIKE
@@ -3410,16 +3595,42 @@ fun BitChordDesktopApp() {
                             onDismissLyricsOffset = {},
                             windowWidth = windowWidth,
                             windowHeight = windowHeight,
+                            playerOverflowOpen = playerOverflowOpen,
+                            playerQueueToggle = playerQueueToggle,
+                            playerQueueShowing = playerQueueShowing,
+                            playerMenuAnchor = playerMenuAnchor,
+                            playerTranslateToggle = playerTranslateToggle,
+                            playerShowingTranslation = playerShowingTranslation,
+                        )
+                        // The sheet's own origin in the window, so the menu below can be
+                        // placed on the "…" button the player reports in window terms.
+                        val sheetOrigin = remember { mutableStateOf(Offset.Zero) }
+                        Spacer(
+                            Modifier
+                                .matchParentSize()
+                                .onGloballyPositioned { sheetOrigin.value = it.positionInWindow() },
                         )
                         if (playerMenuOpen) {
-                            // Where the player's "…" sits: the right column's credits row, at
-                            // the right edge of the centred two-column layout.
-                            val columnEdge = minOf(windowWidth, 1100.dp) / 2 - 47.dp
+                            // Hung off the "…" itself, wherever the layout put it. Read in
+                            // the offset block, so the sheet moving relays this out and
+                            // recomposes nothing.
+                            val anchorSize = playerMenuAnchor.value?.let { anchor ->
+                                with(LocalDensity.current) { DpSize(anchor.width.toDp(), anchor.height.toDp()) }
+                            } ?: DpSize(34.dp, 34.dp)
                             Box(
                                 Modifier
-                                    .align(Alignment.Center)
-                                    .offset(x = columnEdge)
-                                    .size(34.dp),
+                                    .offset {
+                                        val anchor = playerMenuAnchor.value
+                                            ?: return@offset IntOffset(
+                                                (windowWidth.roundToPx() - 34.dp.roundToPx()) / 2,
+                                                (windowHeight.roundToPx() - 34.dp.roundToPx()) / 2,
+                                            )
+                                        IntOffset(
+                                            (anchor.left - sheetOrigin.value.x).roundToInt(),
+                                            (anchor.top - sheetOrigin.value.y).roundToInt(),
+                                        )
+                                    }
+                                    .size(anchorSize),
                             ) {
                                 DesktopSongMenuFor(
                                     song = playerSong,
@@ -3439,6 +3650,26 @@ fun BitChordDesktopApp() {
                                         DesktopOriginalVersion.clear(current.videoId)
                                         playbackEngine.reloadCurrent(forceSourceRefresh = true)
                                     }.takeIf { DesktopOriginalVersion.isPinned(current.videoId) },
+                                    onMore = {
+                                        playerMenuOpen = false
+                                        playerOverflowOpen.value = true
+                                    },
+                                    onSwitchLyricsQueue = {
+                                        playerMenuOpen = false
+                                        playerQueueToggle.value = true
+                                    },
+                                    queueShowing = playerQueueShowing.value,
+                                    onTranslate = {
+                                        playerMenuOpen = false
+                                        playerTranslateToggle.value = true
+                                    },
+                                    showingTranslation = playerShowingTranslation.value,
+                                    translateEnabled = !sharedLyrics.isNullOrEmpty(),
+                                    lyricsProviders = menuLyricsProviders,
+                                    onSelectLyricsProvider = { label -> lyricsOnly = label },
+                                    onSearchLyrics = { title, artist -> searchLyrics(title, artist) },
+                                    lyricsOffsetMs = lyricsOffsetMs,
+                                    onSetLyricsOffset = { DesktopPlayerSettings.setLyricsOffsetMs(it) },
                                     onDismiss = { playerMenuOpen = false },
                                 )
                             }
@@ -3576,6 +3807,27 @@ fun BitChordDesktopApp() {
                             onDismiss = ::closePlaylistDialogs,
                         )
                     }
+                    val reorderCollection = openedCollection?.takeIf { overlays.reorder }
+                    if (reorderCollection != null) {
+                        DesktopReorderPlaylistDialog(
+                            browseId = reorderCollection.browseId,
+                            busy = playlistBusy,
+                            error = playlistError,
+                            onSave = ::reorderOpenPlaylist,
+                            onDismiss = ::closePlaylistDialogs,
+                            songContextMenu = { song, onDismiss ->
+                                DesktopSongMenuFor(
+                                    song = song,
+                                    liked = song.videoId in likedIds,
+                                    actions = songActionsFor(song),
+                                    onToggleLike = { toggleLike(song) },
+                                    onRevertToOriginal = null,
+                                    onUpgradeQuality = null,
+                                    onDismiss = onDismiss,
+                                )
+                            },
+                        )
+                    }
                     if (overlays.downloadManager) {
                         DesktopDownloadManagerDialog(onDismiss = { overlays.downloadManager = false })
                     }
@@ -3636,6 +3888,7 @@ fun BitChordDesktopApp() {
                     },
                 ) { openMenu ->
                 pageMenu = openMenu
+                CompositionLocalProvider(LocalDesktopContextMenu provides openMenu) {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -3668,10 +3921,20 @@ fun BitChordDesktopApp() {
                                         automix = it
                                         persistence.saveBoolean("automix", it)
                                     },
+                                    automixOnSkip = automixOnSkip,
+                                    onAutomixOnSkipChange = {
+                                        automixOnSkip = it
+                                        persistence.saveBoolean("automix_on_skip", it)
+                                    },
                                     automixPerformance = automixPerformance,
                                     onAutomixPerformanceChange = {
                                         automixPerformance = it
                                         persistence.saveString("automix_performance", it.name)
+                                    },
+                                    automixPhraseBars = automixPhraseBars,
+                                    onAutomixPhraseBarsChange = {
+                                        automixPhraseBars = it
+                                        persistence.saveString("automix_phrase_bars", it.toString())
                                     },
                                     shuffle = shuffle,
                                     onShuffleChange = ::setShuffle,
@@ -3969,6 +4232,9 @@ fun BitChordDesktopApp() {
                                 ?.takeIf { DesktopNavidromeSource.parseAlbum(it.browseId) == null }
                                 ?.let { collection -> { shareCollection(collection) } },
                             onDelete = { overlays.delete = true }.takeIf { openedCollection?.owned == true },
+                            onReorder = { overlays.reorder = true }.takeIf {
+                                openedCollection?.owned == true && openedCollection?.type == BrowseType.PLAYLIST
+                            },
                             onRemoveFromPlaylist = ::removeFromOpenPlaylist
                                 .takeIf { openedCollection?.owned == true },
                             onOpenArtist = ::openArtistCredit,
@@ -4243,6 +4509,7 @@ fun BitChordDesktopApp() {
                     }
                 }
                 }
+                }
 
             }
         }
@@ -4284,11 +4551,11 @@ private fun DesktopTopBar(
 ) {
     val titleBarEnabled by DesktopTitleBarSetting.enabled.collectAsState()
     val inlineCaption = DesktopPlatform.drawsOwnWindowFrame && !titleBarEnabled
-    // The same beat clock the player's scrubber runs, so this line and the player breathe
-    // together through an Automix blend.
+    // The same claim the player's scrubber runs through an Automix blend, but breathing slowly and
+    // gently rather than strobing on the beat — the desktop's calm reading of a mix.
     val mixBlend = DesktopPlayerSettings.smartMixBlend.collectAsState()
     val reduceAnimation by DesktopPlayerSettings.reduceAnimation.collectAsState()
-    val mixPulse = rememberMixPulse({ mixBlend.value }, enabled = !reduceAnimation)
+    val mixPulse = rememberMixPulse({ mixBlend.value }, enabled = !reduceAnimation, slow = true)
     val currentProgress by rememberUpdatedState(progress)
 
     // Apple Music uses one calm strip for both player controls and window furniture. The left
@@ -4304,7 +4571,7 @@ private fun DesktopTopBar(
                     Modifier
                         .fillMaxHeight()
                         .desktopWindowGlass(DesktopChromeEdge.BOTTOM)
-                        .padding(start = 10.dp),
+                        .padding(start = if (DesktopPlatform.isMac) 16.dp else 10.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     DesktopWindowButtons()
@@ -4645,6 +4912,8 @@ private fun DesktopSidebar(
     val shortcutPages = sidebarShortcutPages(spotifyEnabled)
     fun shortcut(page: DesktopDestination): Int? =
         if (showDigits) shortcutPages.indexOf(page).takeIf { it >= 0 }?.plus(1) else null
+    // Rows the listener has tucked away; keyed the same way the sidebar lists them.
+    val hiddenSidebar by DesktopSidebarVisibility.hidden.collectAsState()
     Box(
         Modifier
             .width(220.dp)
@@ -4656,7 +4925,12 @@ private fun DesktopSidebar(
             // three buttons, and room to take hold of the window by.
             if (inlineCaption) {
                 DesktopTitleBarDragArea(Modifier.fillMaxWidth().height(SIDEBAR_CAPTION_HEIGHT)) {
-                    Box(Modifier.fillMaxSize().padding(start = 10.dp), contentAlignment = Alignment.CenterStart) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(start = if (DesktopPlatform.isMac) 16.dp else 10.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
                         DesktopWindowButtons()
                     }
                 }
@@ -4690,43 +4964,67 @@ private fun DesktopSidebar(
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = desktopChromeDivider())
             Spacer(Modifier.height(12.dp))
-            DesktopSidebarItem(BitChordIcons.Clock, "History", destination == DesktopDestination.HISTORY, shortcut(DesktopDestination.HISTORY)) {
-                onDestinationSelected(DesktopDestination.HISTORY)
+            if (HISTORY_KEY !in hiddenSidebar) {
+                DesktopSidebarItem(
+                    BitChordIcons.Clock,
+                    "History",
+                    destination == DesktopDestination.HISTORY,
+                    shortcut(DesktopDestination.HISTORY),
+                    onClick = { onDestinationSelected(DesktopDestination.HISTORY) },
+                    onHide = { DesktopSidebarVisibility.hide(HISTORY_KEY, "History") },
+                )
             }
             val queued by DesktopDownloadQueue.active.collectAsState()
-            DesktopSidebarItem(
-                BitChordIcons.Download,
-                if (queued.isEmpty()) "Downloads" else "Downloads · ${queued.size}",
-                destination == DesktopDestination.DOWNLOADS,
-                shortcut(DesktopDestination.DOWNLOADS),
-            ) {
-                onDestinationSelected(DesktopDestination.DOWNLOADS)
+            if (DOWNLOADS_KEY !in hiddenSidebar) {
+                DesktopSidebarItem(
+                    BitChordIcons.Download,
+                    if (queued.isEmpty()) "Downloads" else "Downloads · ${queued.size}",
+                    destination == DesktopDestination.DOWNLOADS,
+                    shortcut(DesktopDestination.DOWNLOADS),
+                    onClick = { onDestinationSelected(DesktopDestination.DOWNLOADS) },
+                    onHide = { DesktopSidebarVisibility.hide(DOWNLOADS_KEY, "Downloads") },
+                )
             }
-            DesktopSidebarItem(BitChordIcons.Library, "Local Music", destination == DesktopDestination.LOCAL_MUSIC, shortcut(DesktopDestination.LOCAL_MUSIC)) {
-                onDestinationSelected(DesktopDestination.LOCAL_MUSIC)
+            if (LOCAL_MUSIC_KEY !in hiddenSidebar) {
+                DesktopSidebarItem(
+                    BitChordIcons.Library,
+                    "Local Music",
+                    destination == DesktopDestination.LOCAL_MUSIC,
+                    shortcut(DesktopDestination.LOCAL_MUSIC),
+                    onClick = { onDestinationSelected(DesktopDestination.LOCAL_MUSIC) },
+                    onHide = { DesktopSidebarVisibility.hide(LOCAL_MUSIC_KEY, "Local Music") },
+                )
             }
             Spacer(Modifier.height(6.dp))
             HorizontalDivider(color = desktopChromeDivider())
             Spacer(Modifier.height(12.dp))
+            val visibleAccount = accountPlaylists.filterNot { "account:${it.browseId}" in hiddenSidebar }
+            val visibleLocal = localPlaylists.filterNot { "local:${it.id}" in hiddenSidebar }
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
-                items(accountPlaylists, key = { "account:${it.browseId}" }) { playlist ->
+                items(visibleAccount, key = { "account:${it.browseId}" }) { playlist ->
                     DesktopSidebarItem(
                         Icons.AutoMirrored.Rounded.PlaylistPlay,
                         playlist.title,
                         openedCollectionId == playlist.browseId,
-                    ) { onOpenAccountPlaylist(playlist) }
+                        onClick = { onOpenAccountPlaylist(playlist) },
+                        onHide = {
+                            DesktopSidebarVisibility.hide("account:${playlist.browseId}", playlist.title)
+                        },
+                    )
                 }
-                items(localPlaylists, key = { "local:${it.id}" }) { playlist ->
+                items(visibleLocal, key = { "local:${it.id}" }) { playlist ->
                     DesktopSidebarItem(
                         Icons.AutoMirrored.Rounded.PlaylistPlay,
                         playlist.title,
                         openedCollectionId == playlist.id,
-                    ) { onOpenLocalPlaylist(playlist) }
+                        onClick = { onOpenLocalPlaylist(playlist) },
+                        onHide = { DesktopSidebarVisibility.hide("local:${playlist.id}", playlist.title) },
+                    )
                 }
-                if (accountPlaylists.isEmpty() && localPlaylists.isEmpty()) {
+                if (visibleAccount.isEmpty() && visibleLocal.isEmpty()) {
                     item {
                         Text(
                             "Your playlists will appear here",
@@ -4739,6 +5037,9 @@ private fun DesktopSidebar(
             }
             HorizontalDivider(color = desktopChromeDivider())
             Spacer(Modifier.height(8.dp))
+            if (hiddenSidebar.isNotEmpty()) {
+                DesktopSidebarRestoreRow(hiddenSidebar)
+            }
             DesktopSidebarItem(Icons.Rounded.Settings, "Settings", settingsOpen, if (showDigits) SETTINGS_SHORTCUT else null) {
                 onOpenSettings()
             }
@@ -4761,28 +5062,120 @@ private fun DesktopSidebarItem(
     selected: Boolean,
     /** The digit that opens it with Ctrl, shown while the keyboard hints are up. */
     shortcut: Int? = null,
+    /** When set, a right-click offers to hide the row — see [DesktopSidebarVisibility]. */
+    onHide: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(7.dp))
-            .background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, label, tint = if (selected) DesktopAccent else DesktopSecondary, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(
-            label,
-            color = if (selected) Color.White else DesktopSecondary,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        if (shortcut != null) DesktopKeyChip("Ctrl $shortcut")
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .desktopHoverFill()
+                .clip(RoundedCornerShape(7.dp))
+                .background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                .clickable(onClick = onClick)
+                .then(
+                    if (onHide == null) Modifier
+                    else Modifier.pointerInput(onHide) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                                    menuOpen = true
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    },
+                )
+                .padding(horizontal = 9.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(icon, label, tint = if (selected) DesktopAccent else DesktopSecondary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                label,
+                color = if (selected) Color.White else DesktopSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            if (shortcut != null) DesktopKeyChip("Ctrl $shortcut")
+        }
+        if (onHide != null) {
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(DesktopStrings["hide_from_sidebar", "Hide from sidebar"]) },
+                    onClick = {
+                        menuOpen = false
+                        onHide()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** The secondary destinations that can be tucked away, by the key they hide under. */
+private const val HISTORY_KEY = "dest:HISTORY"
+private const val DOWNLOADS_KEY = "dest:DOWNLOADS"
+private const val LOCAL_MUSIC_KEY = "dest:LOCAL_MUSIC"
+
+/**
+ * The "N hidden" row that brings tucked-away rows back: a menu of everything
+ * hidden, each restoring on its own, plus a "Show all". Only drawn while
+ * something is hidden, so an ordinary sidebar never shows it.
+ */
+@Composable
+private fun DesktopSidebarRestoreRow(hidden: Map<String, String>) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .desktopHoverFill()
+                .clip(RoundedCornerShape(7.dp))
+                .clickable { open = true }
+                .padding(horizontal = 9.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.RemoveCircleOutline,
+                null,
+                tint = DesktopSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                DesktopStrings.format("n_hidden", hidden.size, fallback = "%1\$d hidden"),
+                color = DesktopSecondary,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            hidden.forEach { (key, label) ->
+                DropdownMenuItem(
+                    text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = {
+                        DesktopSidebarVisibility.show(key)
+                        if (DesktopSidebarVisibility.hidden.value.isEmpty()) open = false
+                    },
+                )
+            }
+            if (hidden.size > 1) {
+                DropdownMenuItem(
+                    text = { Text(DesktopStrings["show_all", "Show all"]) },
+                    onClick = {
+                        DesktopSidebarVisibility.showAll()
+                        open = false
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -4990,8 +5383,15 @@ private fun DesktopFrame(
     val appBackground by DesktopWindowBackdrop.appBackground.collectAsState()
     val glass = material != DesktopBackdrop.OFF
     val materialBehindApp = glass && appBackground
+    val maximized by DesktopWindowMode.maximized.collectAsState()
+    val roundCorners = DesktopPlatform.isMac && !maximized
     CompositionLocalProvider(LocalDesktopHaze provides haze) {
-        Box(modifier.fillMaxSize().then(if (glass) Modifier else Modifier.background(containerColor))) {
+        Box(
+            modifier
+                .fillMaxSize()
+                .then(if (roundCorners) Modifier.clip(RoundedCornerShape(10.dp)) else Modifier)
+                .then(if (glass) Modifier else Modifier.background(containerColor)),
+        ) {
             // Both sources of the same state: the chrome blurs the backdrop behind it, and the
             // floating bottom bar blurs the page scrolling under it.
             if (!glass) Box(Modifier.fillMaxSize().hazeSource(haze)) { backdrop(false) }
@@ -5390,6 +5790,7 @@ private fun DesktopHistoryPage(
     onShare: (List<Song>) -> Unit,
 ) {
     DesktopPageScaffold(contentPadding) {
+        val isCurrentRow = rememberPlayingRowMatcher(history)
         LazyColumn(
             contentPadding = pagePadding(start = DesktopPageGutter, end = DesktopPageGutter, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -5403,6 +5804,7 @@ private fun DesktopHistoryPage(
             if (history.isNotEmpty()) items(history, key = Song::videoId) {
                 DesktopSongRow(
                     song = it,
+                    isCurrent = isCurrentRow(it),
                     liked = false,
                     onClick = onSongClick,
                     onToggleLike = null,
@@ -5575,6 +5977,7 @@ private fun DesktopLibrarySongContent(
             }
         }
     } else {
+        val isCurrentRow = rememberPlayingRowMatcher(songs)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = pagePadding(bottom = 32.dp),
@@ -5583,6 +5986,7 @@ private fun DesktopLibrarySongContent(
             items(songs, key = Song::videoId) { song ->
                 DesktopSongRow(
                     song,
+                    isCurrent = isCurrentRow(song),
                     liked = false,
                     onClick = onSongClick,
                     onToggleLike = null,
@@ -5677,8 +6081,13 @@ private fun DesktopSettingsScreen(
     onAutoplayChange: (Boolean) -> Unit,
     automix: Boolean,
     onAutomixChange: (Boolean) -> Unit,
+    automixOnSkip: Boolean,
+    onAutomixOnSkipChange: (Boolean) -> Unit,
     automixPerformance: AutomixPerformanceMode,
     onAutomixPerformanceChange: (AutomixPerformanceMode) -> Unit,
+    /** Apple-style Automix phrase length in bars: 0 = adaptive, 8 or 16 = fixed. */
+    automixPhraseBars: Int,
+    onAutomixPhraseBarsChange: (Int) -> Unit,
     shuffle: Boolean,
     onShuffleChange: (Boolean) -> Unit,
     repeatMode: DesktopRepeatMode,
@@ -5824,6 +6233,47 @@ private fun DesktopSettingsScreen(
                         automix,
                         onAutomixChange,
                     )
+                    SettingsToggle(
+                        DesktopStrings["automix_on_skip", "Automix on skip"],
+                        DesktopStrings[
+                            "automix_on_skip_subtitle",
+                            "When you skip ahead, mix into the next song over ~15s instead of cutting",
+                        ],
+                        automixOnSkip,
+                        onAutomixOnSkipChange,
+                    )
+                    if (automix) {
+                        val phraseTitle = DesktopStrings["automix_phrase_length", "Automix phrase length"]
+                        val phraseSubtitle =
+                            DesktopStrings["automix_phrase_length_subtitle", "Blend over a fixed number of bars, beat-aligned"]
+                        if (settingsRowVisible(phraseTitle, phraseSubtitle)) {
+                            Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                                Text(phraseTitle, fontWeight = FontWeight.Medium)
+                                Text(
+                                    phraseSubtitle,
+                                    color = DesktopSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(0, 8, 16).forEach { bars ->
+                                        FilterChip(
+                                            colors = desktopChipColors(),
+                                            selected = automixPhraseBars == bars,
+                                            onClick = { onAutomixPhraseBarsChange(bars) },
+                                            label = { Text(phraseBarsLabel(bars)) },
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    phraseBarsDetail(automixPhraseBars),
+                                    color = DesktopSecondary,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
                     if (settingsRowVisible(DesktopStrings["automix_performance", "Automix performance"], DesktopStrings["automix_performance_subtitle", "Sets how much CPU background analysis may use"])) {
                         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                             Text(DesktopStrings["automix_performance", "Automix performance"], fontWeight = FontWeight.Medium)
@@ -6123,9 +6573,11 @@ private fun DesktopSettingsScreen(
                                 Text(
                                     when {
                                         backdropChoice != DesktopBackdrop.OFF && backdropActive == DesktopBackdrop.OFF ->
-                                            "Needs Windows 11 version 22H2 or later"
+                                            if (DesktopPlatform.isMac) "Native vibrancy could not be attached"
+                                            else "Needs Windows 11 version 22H2 or later"
                                         backdropChoice == DesktopBackdrop.MICA ->
-                                            "A soft tint taken from your wallpaper"
+                                            if (DesktopPlatform.isMac) "A subtle blur of your desktop wallpaper"
+                                            else "A soft tint taken from your wallpaper"
                                         backdropChoice == DesktopBackdrop.ACRYLIC ->
                                             "A frosted blur of whatever is behind the window"
                                         else -> "Solid, as the rest of the app"
@@ -6144,6 +6596,16 @@ private fun DesktopSettingsScreen(
                             ],
                             appBackground,
                             DesktopWindowBackdrop::setAppBackground,
+                        )
+                        val ambientBackdrop by DesktopAppearanceSettings.ambientBackdrop.collectAsState()
+                        SettingsToggle(
+                            DesktopStrings["d_ambient_backdrop", "Ambient artwork glow"],
+                            DesktopStrings[
+                                "d_ambient_backdrop_subtitle",
+                                "Diffuse current song artwork colors under the window glass",
+                            ],
+                            ambientBackdrop,
+                            DesktopAppearanceSettings::setAmbientBackdrop,
                         )
                     }
                     SettingsToggle(
@@ -6752,6 +7214,8 @@ private fun DesktopCollectionPage(
     /** The three edits only a playlist's owner is offered. */
     onRename: (() -> Unit)?,
     onDelete: (() -> Unit)?,
+    /** Opens the drag-into-order sheet; only a playlist the account owns can be rearranged. */
+    onReorder: (() -> Unit)?,
     /** Copies the release's own YouTube Music link; null for anything with no link to share. */
     onShare: (() -> Unit)?,
     onRemoveFromPlaylist: ((Song) -> Unit)?,
@@ -6847,6 +7311,7 @@ private fun DesktopCollectionPage(
         if (seconds > 0) add(formatCollectionDuration(seconds))
     }.joinToString(" • ").uppercase()
     DesktopPageScaffold(contentPadding) {
+        val isCurrentRow = rememberPlayingRowMatcher(songs)
         LazyColumn(
             contentPadding = pagePadding(
                 start = DesktopPageGutter,
@@ -6987,6 +7452,16 @@ private fun DesktopCollectionPage(
                                             },
                                         )
                                     }
+                                    onReorder?.let { reorder ->
+                                        DropdownMenuItem(
+                                            text = { Text(DesktopStrings["reorder_playlist", "Edit order"]) },
+                                            leadingIcon = { Icon(Icons.Rounded.DragHandle, null) },
+                                            onClick = {
+                                                moreOpen = false
+                                                reorder()
+                                            },
+                                        )
+                                    }
                                     onDelete?.let { delete ->
                                         DropdownMenuItem(
                                             text = { Text(DesktopStrings["delete", "Delete"]) },
@@ -7020,6 +7495,7 @@ private fun DesktopCollectionPage(
                     // alternates.
                     striped = position % 2 == 1,
                     song = song,
+                    isCurrent = isCurrentRow(song),
                     collectionType = collection.type,
                     liked = song.videoId in likedIds,
                     onClick = { _ -> onPlaySongs(songs, index) },
@@ -7064,6 +7540,8 @@ private fun collectionActionsWidth(hasRemove: Boolean): Dp =
 @Composable
 private fun DesktopCollectionSongRow(
     song: Song,
+    /** From the list's [rememberPlayingRowMatcher]; null falls back to the name rule. */
+    isCurrent: Boolean? = null,
     collectionType: BrowseType,
     liked: Boolean,
     onClick: (Song) -> Unit,
@@ -7078,16 +7556,19 @@ private fun DesktopCollectionSongRow(
     /** Takes this row out of the playlist being read. */
     onRemove: ((Song) -> Unit)? = null,
 ) {
+    val openContextMenu = LocalDesktopContextMenu.current
     Row(
         Modifier
             .fillMaxWidth()
+            .contextClick { openContextMenu(song) }
             .clip(RoundedCornerShape(6.dp))
             .background(if (striped) Color.White.copy(alpha = 0.04f) else Color.Transparent)
+            .desktopHoverFill(corner = 6.dp)
             .clickable { onClick(song) }
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val nowPlaying = song.isNowPlaying()
+        val nowPlaying = isCurrent ?: song.isNowPlaying()
         Text(
             number.toString(),
             Modifier.width(28.dp),
@@ -7184,9 +7665,24 @@ private fun DesktopCollectionSongRow(
 /** The track playing, for rows that want to say so. */
 private val LocalNowPlaying = compositionLocalOf<Song?> { null }
 
+/**
+ * Opens the app's song menu where the pointer is, for the desktop's own rows.
+ *
+ * The pages the phone shares already hang right-click off this via their long-press call; a
+ * desktop-only row has no such hook, so it reads this and calls it from a [contextClick]. The
+ * pages that hold it provide it from the pointer host that plants the menu under the cursor.
+ */
+internal val LocalDesktopContextMenu = compositionLocalOf<(Song) -> Unit> { {} }
 /** Whether this row is the track being played, for the now-playing highlight. */
 @Composable
 private fun Song.isNowPlaying(): Boolean = isSameTrackAs(LocalNowPlaying.current)
+
+/** Which of [rows] is the track being played: the one that was played, not every namesake. */
+@Composable
+private fun rememberPlayingRowMatcher(rows: List<Song>): (Song) -> Boolean {
+    val current = LocalNowPlaying.current
+    return remember(rows, current) { playingRowMatcher(rows, current) }
+}
 
 /** The frosted pane the floating bars are made of. */
 @Composable
@@ -7231,7 +7727,20 @@ internal fun Modifier.desktopWindowGlass(
     return if (backdrop == DesktopBackdrop.OFF) {
         desktopChromeGlass(edge, fade)
     } else {
-        background(Color.Black.copy(alpha = WINDOW_GLASS_TINT))
+        val base = background(Color.Black.copy(alpha = WINDOW_GLASS_TINT))
+        if (DesktopPlatform.isMac && edge == DesktopChromeEdge.BOTTOM) {
+            base.drawBehind {
+                // Subtle liquid glass specular highlight along the top edge
+                drawLine(
+                    color = Color.White.copy(alpha = 0.08f),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, 0f),
+                    strokeWidth = 1f,
+                )
+            }
+        } else {
+            base
+        }
     }
 }
 
@@ -7249,7 +7758,11 @@ private val SCRUB_STRIP_HEIGHT = 12.dp
 @Composable
 internal fun desktopChromeDivider(): Color {
     val backdrop by DesktopWindowBackdrop.active.collectAsState()
-    return if (backdrop == DesktopBackdrop.ACRYLIC) Color.White.copy(alpha = 0.14f) else DesktopDivider
+    return when {
+        backdrop == DesktopBackdrop.ACRYLIC -> Color.White.copy(alpha = 0.14f)
+        DesktopPlatform.isMac && backdrop != DesktopBackdrop.OFF -> Color.White.copy(alpha = 0.10f)
+        else -> DesktopDivider
+    }
 }
 
 @Composable
@@ -7310,6 +7823,29 @@ private fun AutomixPerformanceMode.detail(): String = when (this) {
         "2 threads · recommended balance of speed, heat and battery"
     AutomixPerformanceMode.PERFORMANCE ->
         "4 threads · fastest analysis · higher heat and battery use"
+}
+
+/** Chip label for an Apple-style Automix phrase length, in bars; 0 is the adaptive default. */
+private fun phraseBarsLabel(bars: Int): String = when (bars) {
+    8 -> DesktopStrings["automix_phrase_8", "8 bars"]
+    16 -> DesktopStrings["automix_phrase_16", "16 bars"]
+    else -> DesktopStrings["automix_phrase_auto", "Auto"]
+}
+
+/** What the selected phrase length does, shown under the chips. */
+private fun phraseBarsDetail(bars: Int): String = when (bars) {
+    8 -> DesktopStrings[
+        "automix_phrase_8_detail",
+        "Mixes over exactly 8 bars, both edges on the beat grid",
+    ]
+    16 -> DesktopStrings[
+        "automix_phrase_16_detail",
+        "Mixes over exactly 16 bars, both edges on the beat grid",
+    ]
+    else -> DesktopStrings[
+        "automix_phrase_auto_detail",
+        "Chooses each transition's length from the two tracks",
+    ]
 }
 
 /** Android's wording for the Automix line, so both players read alike. */
@@ -7481,6 +8017,8 @@ private fun DesktopShelfCard(item: ShelfItem, onClick: (ShelfItem) -> Unit) {
 @Composable
 private fun DesktopSongRow(
     song: Song,
+    /** From the list's [rememberPlayingRowMatcher]; null falls back to the name rule. */
+    isCurrent: Boolean? = null,
     liked: Boolean,
     onClick: (Song) -> Unit,
     onToggleLike: ((Song) -> Unit)?,
@@ -7492,11 +8030,14 @@ private fun DesktopSongRow(
     /** The row's own "…", when the page has a menu to give it. */
     menu: (@Composable (Song) -> Unit)? = null,
 ) {
+    val openContextMenu = LocalDesktopContextMenu.current
     Row(
         Modifier
             .fillMaxWidth()
+            .contextClick { openContextMenu(song) }
             .clip(RoundedCornerShape(10.dp))
             .background(DesktopGlass.copy(alpha = 0.38f))
+            .desktopHoverFill(corner = 10.dp)
             .clickable { onClick(song) }
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -7523,23 +8064,17 @@ private fun DesktopSongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = FontWeight.Medium,
-                color = if (song.isNowPlaying()) Color.White else Color.White.copy(alpha = 0.75f),
+                color = if (isCurrent ?: song.isNowPlaying()) Color.White else Color.White.copy(alpha = 0.75f),
             )
             Text(listOfNotNull(song.artist.takeIf(String::isNotBlank), song.durationText).joinToString(" · "), color = DesktopSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        song.sourceQuality?.let { quality ->
-            val badge = quality.uppercase().takeIf { value ->
-                value in setOf("LOSSLESS", "FLAC", "HI-RES", "HIRES", "HIGH", "320")
-            }
-            if (badge != null) {
-                Text(
-                    badge,
-                    color = DesktopAccent,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-            }
+        song.sourceQualityBadge()?.let { quality ->
+            SourceQualityBadge(
+                quality = quality,
+                color = DesktopSecondary,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
         }
         if (onToggleLike != null) {
             IconButton(onClick = { onToggleLike(song) }) { Icon(if (liked) BitChordIcons.HeartFilled else BitChordIcons.Heart, "Favorite", tint = if (liked) DesktopAccent else DesktopSecondary) }

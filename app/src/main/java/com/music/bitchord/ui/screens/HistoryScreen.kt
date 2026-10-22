@@ -22,7 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.music.bitchord.data.model.Song
 import com.music.bitchord.data.model.UiState
-import com.music.bitchord.data.model.isSameTrackAs
+import com.music.bitchord.data.model.playingRowMatcher
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PlayingAccent
 import com.music.bitchord.ui.components.ROW_DIVIDER_INSET
@@ -72,6 +72,7 @@ fun HistoryScreen(
 
             is UiState.Success -> {
                 val songs = state.data
+                val isCurrentRow = playingRowMatcher(songs, currentSong)
                 if (songs.isNotEmpty() && onShare != null) {
                     item(key = "history:share") {
                         TextButton(onClick = { onShare(songs) }, modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -90,8 +91,8 @@ fun HistoryScreen(
                         onClick = { onSongClick(songs, index) },
                         onLongPress = { onSongLongPress(song) },
                         onSwipeToQueue = { onSongSwipe(song) },
-                        isCurrent = song.isSameTrackAs(currentSong),
-                        isPlaying = song.isSameTrackAs(currentSong) && isPlaying,
+                        isCurrent = isCurrentRow(song),
+                        isPlaying = isCurrentRow(song) && isPlaying,
                         searchPlayingStyle = true,
                         activeTint = PlayingAccent,
                     )
