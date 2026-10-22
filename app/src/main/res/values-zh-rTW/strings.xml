@@ -1339,4 +1339,5 @@
     <string name="story_recent_title">最近播放</string>
     <string name="story_share_link">分享連結</string>
     <string name="story_export_error">無法儲存或分享圖片。請重試。</string>
+    <string name="sort_recently_played">最近播放</string>
 </resources>

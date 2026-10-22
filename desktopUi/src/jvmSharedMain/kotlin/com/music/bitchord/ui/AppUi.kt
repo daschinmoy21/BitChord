@@ -28,10 +28,20 @@ interface AppUiHost {
     /** How a Library "Show all" grid is ordered. */
     val librarySort: StateFlow<LibrarySort>
 
+    /**
+     * When each album or playlist was last played, in epoch milliseconds, for
+     * [LibrarySort.RECENTLY_PLAYED]. Keyed by browse id, and by
+     * [libraryRecentTitleKey] of the album's title for plays that only carry a name.
+     */
+    val libraryRecentlyPlayed: StateFlow<Map<String, Long>>
+
     /** Video ids of the tracks already downloaded, for the mark on their rows. */
     @Composable
     fun downloadedIds(): Set<String>
 }
+
+/** The [AppUiHost.libraryRecentlyPlayed] key for a play known only by its album's title. */
+fun libraryRecentTitleKey(title: String): String = "title:" + title.trim().lowercase()
 
 object AppUi {
     @Volatile
