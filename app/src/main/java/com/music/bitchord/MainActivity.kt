@@ -3637,7 +3637,8 @@ private fun BitChordApp(
                                         expanded = librarySortMenuOpen,
                                         onDismissRequest = { librarySortMenuOpen = false },
                                     ) {
-                                        LibrarySort.entries.forEach { option ->
+                                        // Recently played needs a play record the phone doesn't keep.
+                                        LibrarySort.entries.filter { it != LibrarySort.RECENTLY_PLAYED }.forEach { option ->
                                             DropdownMenuItem(
                                                 text = { Text(option.localizedLabel()) },
                                                 trailingIcon = if (option == librarySort) {
@@ -5175,6 +5176,7 @@ private fun LibrarySort.localizedLabel(): String = when (this) {
     LibrarySort.DEFAULT -> stringResource(R.string.sort_default)
     LibrarySort.TITLE_ASC -> stringResource(R.string.sort_title_ascending)
     LibrarySort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
+    LibrarySort.RECENTLY_PLAYED -> stringResource(R.string.sort_recently_played)
 }
 
 /**

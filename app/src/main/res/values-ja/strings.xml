@@ -560,6 +560,7 @@
     <string name="sort_music">音楽を並べ替え</string>
     <string name="sort_title_ascending">アルファベット順（A→Z）</string>
     <string name="sort_title_descending">アルファベット順（Z→A）</string>
+    <string name="sort_recently_played">最近再生した項目</string>
     <string name="sort_date_added">追加日（新しい順）</string>
     <string name="sort_date_modified">更新日（新しい順）</string>
     <string name="use_all_audio_folders">すべてのオーディオフォルダを使用</string>

@@ -597,6 +597,7 @@
     <string name="sort_music">Sắp xếp nhạc</string>
     <string name="sort_title_ascending">Theo thứ tự bảng chữ cái (A đến Z)</string>
     <string name="sort_title_descending">Theo thứ tự bảng chữ cái (Z đến A)</string>
+    <string name="sort_recently_played">Đã phát gần đây</string>
     <string name="sort_date_added">Ngày thêm vào (mới nhất trước)</string>
     <string name="sort_date_added_oldest">Ngày thêm vào (cũ nhất trước)</string>
     <string name="sort_date_added_toggle">Ngày thêm vào</string>

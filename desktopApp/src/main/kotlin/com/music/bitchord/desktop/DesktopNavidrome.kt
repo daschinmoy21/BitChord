@@ -559,6 +559,30 @@ internal fun LibraryPage.withServerAlbums(albums: List<ShelfItem>): LibraryPage 
     return copy(shelves = next)
 }
 
+/** Which albums the Library's Albums grid shows, by where they come from. */
+internal enum class DesktopAlbumSourceFilter {
+    ALL,
+    NAVIDROME,
+    YOUTUBE,
+}
+
+internal fun DesktopAlbumSourceFilter.label(): String = when (this) {
+    DesktopAlbumSourceFilter.ALL -> DesktopStrings["album_filter_all", "All"]
+    DesktopAlbumSourceFilter.NAVIDROME -> DesktopStrings["album_filter_navidrome", "Navidrome"]
+    DesktopAlbumSourceFilter.YOUTUBE -> DesktopStrings["album_filter_youtube", "YouTube Music"]
+}
+
+/** This shelf's cards that [filter] lets through: a Navidrome card is one [DesktopNavidromeSource.parseAlbum] reads. */
+internal fun HomeShelf.filteredBySource(filter: DesktopAlbumSourceFilter): HomeShelf = when (filter) {
+    DesktopAlbumSourceFilter.ALL -> this
+    DesktopAlbumSourceFilter.NAVIDROME -> copy(
+        items = items.filter { DesktopNavidromeSource.parseAlbum(it.browseId.orEmpty()) != null },
+    )
+    DesktopAlbumSourceFilter.YOUTUBE -> copy(
+        items = items.filter { DesktopNavidromeSource.parseAlbum(it.browseId.orEmpty()) == null },
+    )
+}
+
 /**
  * What the Library screen renders. A YouTube load still in flight stays loading.
  * A failed YouTube load keeps the error when [albums] is empty, and shows [albums] otherwise.

@@ -587,6 +587,7 @@
     <string name="sort_music">Сортировка музыки</string>
     <string name="sort_title_ascending">По алфавиту (А — Я)</string>
     <string name="sort_title_descending">По алфавиту (Я — А)</string>
+    <string name="sort_recently_played">Недавно прослушанные</string>
     <string name="sort_date_added">По дате добавления (сначала новые)</string>
     <string name="sort_date_modified">По дате изменения (сначала новые)</string>
     <string name="use_all_audio_folders">Использовать все папки с аудио</string>

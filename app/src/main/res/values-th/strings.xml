@@ -588,6 +588,7 @@
     <string name="sort_music">จัดเรียงเพลง</string>
     <string name="sort_title_ascending">ตามตัวอักษร (ก ถึง ฮ)</string>
     <string name="sort_title_descending">ตามตัวอักษร (ฮ ถึง ก)</string>
+    <string name="sort_recently_played">เล่นล่าสุด</string>
     <string name="sort_date_added">วันที่เพิ่ม (ใหม่สุดก่อน)</string>
     <string name="sort_date_modified">วันที่แก้ไข (ใหม่สุดก่อน)</string>
     <string name="use_all_audio_folders">ใช้โฟลเดอร์เสียงทั้งหมด</string>
