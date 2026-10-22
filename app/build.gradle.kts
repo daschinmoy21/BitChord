@@ -522,3 +522,11 @@ if (providers.gradleProperty("bitchord.bundleWear").orNull != "false" && findPro
         variant.sources.assets?.addGeneratedSourceDirectory(bundle, BundleWearApk::outputDir)
     }
 }
+
+// conscrypt-android (for the watch installer above) is Android's native build of
+// Conscrypt. On the JVM unit-test classpath it shadows the conscrypt-openjdk
+// classes Robolectric installs as its security provider, whose native library
+// then fails to load (UnsatisfiedLinkError) in every Robolectric test.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
+}
