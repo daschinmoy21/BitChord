@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Navigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
+import { AlbumLibrary } from '@/components/music/AlbumLibrary';
 import { CircleLockup, SquareLockup, VideoLockup } from '@/components/music/Lockups';
 import { EmptyState, LoadError, LoadMoreError, NeedsExtension } from '@/components/music/States';
 import { TrackList } from '@/components/music/TrackList';
@@ -34,7 +35,7 @@ export default function LibraryPage() {
   const library = useLibrary(isLibrarySection(section) ? section : 'playlists');
   const loadMore = useLoadMore(
     library.hasNextPage && !library.isFetchingNextPage && !library.isFetchNextPageError
-      ? () => void library.fetchNextPage()
+      ? () => void library.fetchNextPage({ cancelRefetch: false })
       : null,
   );
 
@@ -60,8 +61,17 @@ export default function LibraryPage() {
   return (
     <>
       <PageHeader title={title} />
-      {!grid.length && !tracks.length && <EmptyState title="Nothing here yet" />}
-      {grid.length > 0 && (
+      {section === 'albums' && (
+        <AlbumLibrary
+          albums={grid}
+          hasNextPage={library.hasNextPage}
+          fetching={library.isFetching}
+          loadMoreFailed={library.isFetchNextPageError}
+          onLoadMore={() => void library.fetchNextPage({ cancelRefetch: false })}
+        />
+      )}
+      {section !== 'albums' && !grid.length && !tracks.length && <EmptyState title="Nothing here yet" />}
+      {section !== 'albums' && grid.length > 0 && (
         <ul className={seeAllGrid} data-wide={grid.every((i) => i.wide) || undefined}>
           {grid.map((item, i) => (
             <li key={`${item.id}-${i}`}>
