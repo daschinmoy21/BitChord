@@ -592,6 +592,7 @@
     <string name="sort_music">จัดเรียงเพลง</string>
     <string name="sort_title_ascending">ตามตัวอักษร (ก ถึง ฮ)</string>
     <string name="sort_title_descending">ตามตัวอักษร (ฮ ถึง ก)</string>
+    <string name="sort_recently_played">เล่นล่าสุด</string>
     <string name="sort_date_added">วันที่เพิ่ม (ใหม่สุดก่อน)</string>
     <string name="sort_date_modified">วันที่แก้ไข (ใหม่สุดก่อน)</string>
     <string name="use_all_audio_folders">ใช้โฟลเดอร์เสียงทั้งหมด</string>
@@ -1280,6 +1281,14 @@
     <string name="spotify_sign_in">ลงชื่อเข้าใช้ด้วย Spotify</string>
     <string name="spotify_use_spdc_token">ใช้โทเค็น sp_dc</string>
     <string name="spotify_track_unavailable">หาเพลงนั้นบน YouTube Music ไม่พบ</string>
+    <string name="story_share_title">แชร์สตอรี่</string>
+    <string name="story_share_description">เลือกพื้นหลัง แล้วบันทึกหรือแชร์การ์ดของคุณ</string>
+    <string name="story_style_artwork">ปก</string>
+    <string name="story_style_colour">สี</string>
+    <string name="story_style_dark">มืด</string>
+    <string name="story_recent_title">เล่นล่าสุด</string>
+    <string name="story_share_link">แชร์ลิงก์</string>
+    <string name="story_export_error">ไม่สามารถบันทึกหรือแชร์รูปภาพได้ โปรดลองอีกครั้ง</string>
     <string name="artist_signatures">ลายเซ็นศิลปิน</string>
     <string name="artist_signatures_subtitle">แสดงลายเซ็นลายมือเมื่อ Apple Music ไม่มีโลโก้ชื่อเรื่อง</string>
     <string name="artist_signatures_url">URL API ลายเซ็น</string>

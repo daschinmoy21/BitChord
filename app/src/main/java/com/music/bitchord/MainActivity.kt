@@ -320,6 +320,8 @@ import com.music.bitchord.ui.onboarding.OnboardingScreen
 import com.music.bitchord.ui.replay.ReplayScreen
 import com.music.bitchord.ui.replay.cards
 import com.music.bitchord.ui.replay.ReplayShareSheet
+import com.music.bitchord.ui.share.StoryCard
+import com.music.bitchord.ui.share.StoryShareSheet
 import com.music.bitchord.ui.replay.ReplayStories
 import com.music.bitchord.ui.replay.ReplayStoryPage
 import com.music.bitchord.ui.replay.rememberReplayState
@@ -564,6 +566,7 @@ private fun BitChordApp(
     var replayLandingPage by rememberSaveable { mutableStateOf(ReplayStoryPage.INTRO) }
     var replayStory by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
     var showReplayShare by rememberSaveable { mutableStateOf(false) }
+    var storyShare by remember { mutableStateOf<StoryCard?>(null) }
     /** Which story card the share sheet is for, or null for the whole Replay. */
     var replaySharePage by rememberSaveable { mutableStateOf<ReplayStoryPage?>(null) }
     var showSpotifyCanvasAuth by remember { mutableStateOf(false) }
@@ -770,6 +773,7 @@ private fun BitChordApp(
         dismissPlayer()
         replayStory = null
         showReplayShare = false
+        storyShare = null
         webSession = null
         navigator.reset(AppRoute.Settings, AppRoute.ListenTogether)
         JamInviteLink.handled()
@@ -2687,6 +2691,7 @@ private fun BitChordApp(
                                 onSongLongPress = openSongMenu,
                                 onSongSwipe = onSongSwipe,
                                 onRetry = viewModel::loadHistory,
+                                onShare = { songs -> storyShare = StoryCard.Recent(songs.toList()) },
                                 contentPadding = listPadding,
                             )
                         } else if (pageRoute is AppRoute.LibraryShowAll) {
@@ -3604,7 +3609,8 @@ private fun BitChordApp(
                                         expanded = librarySortMenuOpen,
                                         onDismissRequest = { librarySortMenuOpen = false },
                                     ) {
-                                        LibrarySort.entries.forEach { option ->
+                                        // Recently played needs a play record the phone doesn't keep.
+                                        LibrarySort.entries.filter { it != LibrarySort.RECENTLY_PLAYED }.forEach { option ->
                                             DropdownMenuItem(
                                                 text = { Text(option.localizedLabel()) },
                                                 trailingIcon = if (option == librarySort) {
@@ -4019,14 +4025,29 @@ private fun BitChordApp(
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
                     containerColor = MaterialTheme.colorScheme.background,
                 ) {
-                    ReplayShareSheet(
-                        summary = summary,
-                        holder = account?.name.orEmpty(),
-                        memberSince = replay.memberSince,
-                        page = replaySharePage,
-                        onDismiss = { showReplayShare = false },
-                    )
+                    if (replaySharePage == null) {
+                        val card = remember { StoryCard.Replay(summary) }
+                        StoryShareSheet(card, onDismiss = { showReplayShare = false })
+                    } else {
+                        ReplayShareSheet(
+                            summary = summary,
+                            holder = account?.name.orEmpty(),
+                            memberSince = replay.memberSince,
+                            page = replaySharePage,
+                            onDismiss = { showReplayShare = false },
+                        )
+                    }
                 }
+            }
+        }
+
+        storyShare?.let { card ->
+            ModalBottomSheet(
+                onDismissRequest = { storyShare = null },
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                containerColor = MaterialTheme.colorScheme.background,
+            ) {
+                StoryShareSheet(card, onDismiss = { storyShare = null })
             }
         }
 
@@ -4064,12 +4085,8 @@ private fun BitChordApp(
                 )
             } ?: heldSong
             val share: () -> Unit = {
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.videoId}")
-                }
-                context.startActivity(Intent.createChooser(sendIntent, song.title))
                 songActions = null
+                storyShare = StoryCard.Track(song)
             }
             // Navigating has to take the player down with the sheet, or the
             // page it opens lands behind a still-covering player.
@@ -4337,11 +4354,8 @@ private fun BitChordApp(
                 upgradeQualityInProgress = fromPlayer && song.videoId in qualityUpgradesInFlight,
                 onToggleAudioVersion = onToggleVersion,
                 isAudioVersion = menuIsAudioVersion,
-                // Hidden outright when there's no real YouTube id behind
-                // this row to build a link from — SongActionsSheet already
-                // drops it for a local file via `isOffline`, this catches
-                // the rest.
-                onShare = share.takeIf { song.videoId.isNotBlank() },
+                // Local tracks can share a card too; the sheet offers a link only for YouTube ids.
+                onShare = share,
                 onCopyLog = if (fromPlayer) {
                     {
                         songActions = null
@@ -5308,6 +5322,7 @@ private fun LibrarySort.localizedLabel(): String = when (this) {
     LibrarySort.DEFAULT -> stringResource(R.string.sort_default)
     LibrarySort.TITLE_ASC -> stringResource(R.string.sort_title_ascending)
     LibrarySort.TITLE_DESC -> stringResource(R.string.sort_title_descending)
+    LibrarySort.RECENTLY_PLAYED -> stringResource(R.string.sort_recently_played)
 }
 
 /**

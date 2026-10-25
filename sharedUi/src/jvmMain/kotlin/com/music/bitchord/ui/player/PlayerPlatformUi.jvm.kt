@@ -2,8 +2,10 @@ package com.music.bitchord.ui.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
@@ -11,6 +13,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.round
+import kotlinx.coroutines.withTimeoutOrNull
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
 import org.jetbrains.skia.ImageFilter
@@ -22,6 +25,25 @@ import org.jetbrains.skia.Rect as SkRect
 private val startNanos = System.nanoTime()
 
 internal actual fun uptimeMillis(): Long = (System.nanoTime() - startNanos) / 1_000_000L
+
+@Composable
+internal actual fun rememberLyricClockActive(): Boolean {
+    // collectAsStateWithLifecycle stops under ON_PAUSE. Compose Desktop sends
+    // ON_PAUSE when the window loses focus, and this flag still has to update
+    // then. It goes false only when the window is hidden to the tray.
+    return PlayerPlatform.host.windowOnScreen.collectAsState().value
+}
+
+internal actual suspend fun awaitLyricFrameNanos(): Long {
+    // A focused window delivers vsync inside this wait. An unfocused one may
+    // never request a frame, and blocking in withFrameNanos is what froze the
+    // lyrics. The wall clock keeps the playhead moving, and the state write
+    // that follows asks the window to draw.
+    return withTimeoutOrNull(LYRIC_FRAME_WAIT_MS) { withFrameNanos { it } } ?: System.nanoTime()
+}
+
+/** Long enough for a late vsync, short enough that a missing frame does not stall the line. */
+private const val LYRIC_FRAME_WAIT_MS = 32L
 
 // Skia blurs at every size; there is no platform floor to check.
 internal actual val renderEffectBlurSupported: Boolean = true

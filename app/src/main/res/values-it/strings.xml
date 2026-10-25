@@ -630,6 +630,7 @@
     <string name="sort_music">Ordina musica</string>
     <string name="sort_title_ascending">Alfabetico (A-Z)</string>
     <string name="sort_title_descending">Alfabetico (Z-A)</string>
+    <string name="sort_recently_played">Ascoltati di recente</string>
     <string name="sort_date_added">Data aggiunta (più recenti prima)</string>
     <string name="sort_date_modified">Data modifica (più recenti prima)</string>
     <string name="use_all_audio_folders">Usa tutte le cartelle audio</string>
@@ -1236,6 +1237,14 @@
     <string name="spotify_sign_in">Accedi con Spotify</string>
     <string name="spotify_use_spdc_token">Usa token sp_dc</string>
     <string name="spotify_track_unavailable">Impossibile trovare quel brano su YouTube Music</string>
+    <string name="story_share_title">Condividi storia</string>
+    <string name="story_share_description">Scegli uno sfondo, poi salva o condividi la tua scheda.</string>
+    <string name="story_style_artwork">Copertina</string>
+    <string name="story_style_colour">Colore</string>
+    <string name="story_style_dark">Scuro</string>
+    <string name="story_recent_title">Ascoltati di recente</string>
+    <string name="story_share_link">Condividi link</string>
+    <string name="story_export_error">Impossibile salvare o condividere l’immagine. Riprova.</string>
     <string name="artist_signatures">Firme degli artisti</string>
     <string name="artist_signatures_subtitle">Mostra una firma a mano quando Apple Music non ha un logo del titolo</string>
     <string name="artist_signatures_url">URL dell\'API delle firme</string>

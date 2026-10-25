@@ -564,6 +564,7 @@
     <string name="sort_music">排序方式</string>
     <string name="sort_title_ascending">按字母顺序（A 到 Z）</string>
     <string name="sort_title_descending">按字母顺序（Z 到 A）</string>
+    <string name="sort_recently_played">最近播放</string>
     <string name="sort_date_added">添加日期（最新优先）</string>
     <string name="sort_date_modified">修改日期（最新优先）</string>
     <string name="use_all_audio_folders">使用所有音频文件夹</string>
@@ -1274,6 +1275,14 @@
     <string name="spotify_sign_in">使用 Spotify 登录</string>
     <string name="spotify_use_spdc_token">使用 sp_dc 令牌</string>
     <string name="spotify_track_unavailable">在 YouTube Music 上找不到该歌曲</string>
+    <string name="story_share_title">分享动态</string>
+    <string name="story_share_description">选择背景，然后保存或分享卡片。</string>
+    <string name="story_style_artwork">封面</string>
+    <string name="story_style_colour">色彩</string>
+    <string name="story_style_dark">深色</string>
+    <string name="story_recent_title">最近播放</string>
+    <string name="story_share_link">分享链接</string>
+    <string name="story_export_error">无法保存或分享图片。请重试。</string>
     <string name="search_source_addons">插件</string>
     <string name="search_addons_none">未启用任何插件。请在“设置 → 音源”中添加。</string>
     <string name="app_icon">应用图标</string>

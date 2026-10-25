@@ -583,6 +583,7 @@
     <string name="sort_music">संगीत क्रमबद्ध करें</string>
     <string name="sort_title_ascending">वर्णानुक्रम (A से Z)</string>
     <string name="sort_title_descending">वर्णानुक्रम (Z से A)</string>
+    <string name="sort_recently_played">हाल ही में चलाया गया</string>
     <string name="sort_date_added">जोड़ने की तारीख (नए सबसे पहले)</string>
     <string name="sort_date_modified">बदलाव की तारीख (नए सबसे पहले)</string>
     <string name="use_all_audio_folders">सभी ऑडियो फ़ोल्डर इस्तेमाल करें</string>
@@ -1297,6 +1298,14 @@
     <string name="spotify_sign_in">Spotify से साइन इन करें</string>
     <string name="spotify_use_spdc_token">sp_dc टोकन इस्तेमाल करें</string>
     <string name="spotify_track_unavailable">वह गाना YouTube Music पर नहीं मिला</string>
+    <string name="story_share_title">स्टोरी साझा करें</string>
+    <string name="story_share_description">पृष्ठभूमि चुनें, फिर अपना कार्ड सहेजें या साझा करें।</string>
+    <string name="story_style_artwork">कवर</string>
+    <string name="story_style_colour">रंग</string>
+    <string name="story_style_dark">गहरा</string>
+    <string name="story_recent_title">हाल ही में सुने गए</string>
+    <string name="story_share_link">लिंक साझा करें</string>
+    <string name="story_export_error">चित्र सहेजा या साझा नहीं किया जा सका। फिर से कोशिश करें।</string>
     <string name="artist_signatures">कलाकारों के हस्ताक्षर</string>
     <string name="artist_signatures_subtitle">Apple Music में शीर्षक लोगो न होने पर हस्तलिखित हस्ताक्षर दिखाता है</string>
     <string name="artist_signatures_url">हस्ताक्षर API URL</string>

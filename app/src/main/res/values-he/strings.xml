@@ -535,6 +535,7 @@
     <string name="sort_music">מיין מוזיקה</string>
     <string name="sort_title_ascending">אלפביתי (א עד ת)</string>
     <string name="sort_title_descending">אלפביתי (ת עד א)</string>
+    <string name="sort_recently_played">הושמע לאחרונה</string>
     <string name="sort_date_added">תאריך הוספה (מהחדש לישן)</string>
     <string name="sort_date_modified">תאריך שינוי (מהחדש לישן)</string>
     <string name="use_all_audio_folders">השתמש בכל תיקיות השמע</string>
@@ -1302,6 +1303,14 @@
     <string name="spotify_sign_in">התחברות עם Spotify</string>
     <string name="spotify_use_spdc_token">שימוש באסימון sp_dc</string>
     <string name="spotify_track_unavailable">לא נמצא שיר כזה ב-YouTube Music</string>
+    <string name="story_share_title">שיתוף סטורי</string>
+    <string name="story_share_description">בחרו רקע, ואז שמרו או שתפו את הכרטיס.</string>
+    <string name="story_style_artwork">עטיפה</string>
+    <string name="story_style_colour">צבע</string>
+    <string name="story_style_dark">כהה</string>
+    <string name="story_recent_title">הושמעו לאחרונה</string>
+    <string name="story_share_link">שיתוף קישור</string>
+    <string name="story_export_error">לא ניתן לשמור או לשתף את התמונה. נסו שוב.</string>
     <string name="artist_signatures">חתימות של אמנים</string>
     <string name="artist_signatures_subtitle">מציג חתימה בכתב יד כאשר ל-Apple Music אין לוגו כותרת</string>
     <string name="artist_signatures_url">כתובת API של חתימות</string>

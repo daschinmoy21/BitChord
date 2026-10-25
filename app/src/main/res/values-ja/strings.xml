@@ -564,6 +564,7 @@
     <string name="sort_music">音楽を並べ替え</string>
     <string name="sort_title_ascending">アルファベット順（A→Z）</string>
     <string name="sort_title_descending">アルファベット順（Z→A）</string>
+    <string name="sort_recently_played">最近再生した項目</string>
     <string name="sort_date_added">追加日（新しい順）</string>
     <string name="sort_date_modified">更新日（新しい順）</string>
     <string name="use_all_audio_folders">すべてのオーディオフォルダを使用</string>
@@ -1275,6 +1276,14 @@
     <string name="spotify_sign_in">Spotify でサインイン</string>
     <string name="spotify_use_spdc_token">sp_dc トークンを使用</string>
     <string name="spotify_track_unavailable">その曲は YouTube Music で見つかりません</string>
+    <string name="story_share_title">ストーリーを共有</string>
+    <string name="story_share_description">背景を選び、カードを保存または共有します。</string>
+    <string name="story_style_artwork">ジャケット</string>
+    <string name="story_style_colour">カラー</string>
+    <string name="story_style_dark">ダーク</string>
+    <string name="story_recent_title">最近再生した曲</string>
+    <string name="story_share_link">リンクを共有</string>
+    <string name="story_export_error">画像を保存または共有できませんでした。もう一度お試しください。</string>
     <string name="artist_signatures">アーティストの署名</string>
     <string name="artist_signatures_subtitle">Apple Musicにタイトルロゴがない場合に手書きの署名を表示します</string>
     <string name="artist_signatures_url">署名APIのURL</string>

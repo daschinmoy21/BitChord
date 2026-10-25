@@ -8,6 +8,7 @@ import android.window.OnBackInvokedDispatcher
 import androidx.activity.compose.BackHandler
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
@@ -15,8 +16,14 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.platform.LocalContext
+import com.music.bitchord.ui.rememberIsForeground
 
 internal actual fun uptimeMillis(): Long = SystemClock.uptimeMillis()
+
+@Composable
+internal actual fun rememberLyricClockActive(): Boolean = rememberIsForeground()
+
+internal actual suspend fun awaitLyricFrameNanos(): Long = withFrameNanos { it }
 
 // RenderEffect, API 31+; `Modifier.blur` is a no-op below it.
 internal actual val renderEffectBlurSupported: Boolean

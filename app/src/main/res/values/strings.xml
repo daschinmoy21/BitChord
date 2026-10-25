@@ -788,6 +788,7 @@
     <string name="sort_music">Sort music</string>
     <string name="sort_title_ascending">Alphabetical (A to Z)</string>
     <string name="sort_title_descending">Alphabetical (Z to A)</string>
+    <string name="sort_recently_played">Recently played</string>
     <string name="sort_date_added">Date added (newest first)</string>
     <string name="sort_date_added_oldest">Date added (oldest first)</string>
     <string name="sort_date_added_toggle">Date added</string>
@@ -1169,6 +1170,14 @@
     <string name="spotify_import_language_preference" translatable="false">Language preference</string>
     <string name="spotify_import_language_hint" translatable="false">e.g. Punjabi, Marathi, Korean…</string>
     <string name="spotify_library_subtitle">Your Spotify playlists</string>
+    <string name="story_share_title">Share story</string>
+    <string name="story_share_description">Choose a background, then save or share your card.</string>
+    <string name="story_style_artwork">Artwork</string>
+    <string name="story_style_colour">Colour</string>
+    <string name="story_style_dark">Dark</string>
+    <string name="story_recent_title">Recently played</string>
+    <string name="story_share_link">Share link</string>
+    <string name="story_export_error">Unable to save or share the image. Try again.</string>
     <string name="onboarding_title">Millions of songs, stream on BitChord</string>
     <string name="onboarding_name_prompt">What should we call you?</string>
     <string name="onboarding_name_hint">Your name</string>

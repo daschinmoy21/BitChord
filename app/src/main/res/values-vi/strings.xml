@@ -601,6 +601,7 @@
     <string name="sort_music">Sắp xếp nhạc</string>
     <string name="sort_title_ascending">Theo thứ tự bảng chữ cái (A đến Z)</string>
     <string name="sort_title_descending">Theo thứ tự bảng chữ cái (Z đến A)</string>
+    <string name="sort_recently_played">Đã phát gần đây</string>
     <string name="sort_date_added">Ngày thêm vào (mới nhất trước)</string>
     <string name="sort_date_added_oldest">Ngày thêm vào (cũ nhất trước)</string>
     <string name="sort_date_added_toggle">Ngày thêm vào</string>
@@ -1214,6 +1215,14 @@
     <string name="spotify_sign_in">Đăng nhập bằng Spotify</string>
     <string name="spotify_use_spdc_token">Dùng token sp_dc</string>
     <string name="spotify_track_unavailable">Không tìm thấy bài hát đó trên YouTube Music</string>
+    <string name="story_share_title">Chia sẻ tin</string>
+    <string name="story_share_description">Chọn nền, rồi lưu hoặc chia sẻ thẻ của bạn.</string>
+    <string name="story_style_artwork">Ảnh bìa</string>
+    <string name="story_style_colour">Màu</string>
+    <string name="story_style_dark">Tối</string>
+    <string name="story_recent_title">Đã phát gần đây</string>
+    <string name="story_share_link">Chia sẻ liên kết</string>
+    <string name="story_export_error">Không thể lưu hoặc chia sẻ ảnh. Hãy thử lại.</string>
     <string name="artist_signatures">Chữ ký nghệ sĩ</string>
     <string name="artist_signatures_subtitle">Hiển thị chữ ký tay khi Apple Music không có logo tiêu đề</string>
     <string name="artist_signatures_url">URL API chữ ký</string>

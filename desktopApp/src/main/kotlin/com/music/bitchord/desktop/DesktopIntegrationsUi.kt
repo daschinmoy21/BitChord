@@ -1,0 +1,483 @@
+package com.music.bitchord.desktop
+
+import com.music.bitchord.ui.components.reportsTextEntryFocus
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+
+/**
+ * Signing in to Last.fm — the whole setup in one dialog.
+ *
+ * Last.fm signs every request with the *app's* API key and shared secret, so a
+ * build that shipped without them baked in (no `local.properties`) still needs
+ * them before the account password means anything. Android lets the listener
+ * enter those two under AppSettings; here they join the username and password on
+ * one screen so there is a single, obvious way in rather than a switch that is
+ * greyed out until a key turns up from somewhere. The key and secret are kept so
+ * later scrobbles can sign themselves; the password is sent to
+ * `auth.getMobileSession` once and only the returned session key is stored.
+ */
+@Composable
+internal fun DesktopLastfmLoginDialog(onDismiss: () -> Unit) {
+    var apiKey by remember { mutableStateOf(DesktopScrobbleSettings.lastfmApiKey.value) }
+    var apiSecret by remember { mutableStateOf(DesktopScrobbleSettings.lastfmApiSecret.value) }
+    var username by remember { mutableStateOf(DesktopScrobbleSettings.lastfmUsername.value) }
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    // A release build signs in with BitChord's own app key, so only a build
+    // without one asks for the listener's — the two fields are not shown otherwise.
+    val needsAppKey = !DesktopScrobbling.hasBuiltInLastFmKey
+    val ready = username.isNotBlank() && password.isNotBlank() &&
+        (!needsAppKey || (apiKey.isNotBlank() && apiSecret.isNotBlank()))
+
+    fun submit() {
+        if (busy || !ready) return
+        busy = true
+        error = null
+        // Save the app credentials first: the sign-in request is signed with them,
+        // and every scrobble afterwards reads them back from here.
+        if (needsAppKey) {
+            DesktopScrobbleSettings.setLastfmApiKey(apiKey.trim())
+            DesktopScrobbleSettings.setLastfmApiSecret(apiSecret.trim())
+        }
+        scope.launch {
+            DesktopScrobbling.signInToLastFm(username.trim(), password)
+                .onSuccess { onDismiss() }
+                .onFailure { error = it.message ?: "Last.fm would not sign you in" }
+            busy = false
+        }
+    }
+
+    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 400) {
+        DialogHeading(
+            title = DesktopStrings["d_sign_in_to_last_fm", "Sign in to Last.fm"],
+            message = error
+                ?: if (needsAppKey) {
+                    "Your password is sent to Last.fm once and never stored. The API key " +
+                        "and shared secret are your app's, from last.fm/api."
+                } else {
+                    "Your password is sent to Last.fm once and never stored."
+                },
+            isError = error != null,
+        )
+        if (needsAppKey) {
+            DialogField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                placeholder = DesktopStrings["lastfm_api_key", "API key"],
+                enabled = !busy,
+                imeAction = ImeAction.Next,
+                modifier = Modifier.focusRequester(focus),
+            )
+            Spacer(Modifier.height(8.dp))
+            DialogField(
+                value = apiSecret,
+                onValueChange = { apiSecret = it },
+                placeholder = DesktopStrings["lastfm_shared_secret", "Shared secret"],
+                enabled = !busy,
+                isPassword = true,
+                imeAction = ImeAction.Next,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+        DialogField(
+            value = username,
+            onValueChange = { username = it },
+            placeholder = DesktopStrings["username", "Username"],
+            enabled = !busy,
+            imeAction = ImeAction.Next,
+            modifier = if (needsAppKey) Modifier else Modifier.focusRequester(focus),
+        )
+        Spacer(Modifier.height(8.dp))
+        DialogField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = DesktopStrings["password", "Password"],
+            enabled = !busy,
+            isPassword = true,
+            onSubmit = ::submit,
+        )
+        if (needsAppKey) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = panelInset(22.dp)),
+                horizontalArrangement = Arrangement.Start,
+            ) {
+                TextButton(onClick = { DesktopExternalLinks.open("https://www.last.fm/api/account/create") }) {
+                    Text(
+                        DesktopStrings["d_get_an_api_key", "Get an API key"],
+                        color = DesktopSecondary,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+        DialogActions(
+            confirm = if (busy) "Signing in…" else "Sign in",
+            confirmEnabled = !busy && ready,
+            busy = busy,
+            onConfirm = ::submit,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+/** Account setup shared by Spotify Library and Canvas. */
+@Composable
+internal fun DesktopSpotifyCanvasDialog(onDismiss: () -> Unit, onSaved: (String) -> Unit) {
+    var token by remember { mutableStateOf(DesktopSpotifyToken.cookie()) }
+    var busy by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var manual by remember { mutableStateOf(false) }
+    val browsers = remember { DesktopBrowserSignIn.installed() }
+    val scope = rememberCoroutineScope()
+    var job by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    fun dismiss() { job?.cancel(); onDismiss() }
+    fun connect(browser: DesktopBrowserSignIn.Browser) {
+        if (busy != null) return
+        busy = browser.name
+        error = null
+        job = scope.launch {
+            try {
+                DesktopSpotify.connect(browser)
+                onSaved(DesktopSpotifyToken.cookie())
+                onDismiss()
+            } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                error = failure.message ?: "Could not connect Spotify"
+            } finally { busy = null }
+        }
+    }
+
+    DesktopDialogPanel(onDismiss = ::dismiss, maxWidth = 460) {
+        DialogHeading(
+            title = "Spotify account",
+            message = error ?: if (busy != null) "Finish signing in to Spotify in $busy, then close the sign-in window."
+                else "Connect your playlists and Liked Songs. Tracks play through matching YouTube Music recordings.",
+            isError = error != null,
+        )
+        browsers.forEach { browser ->
+            TextButton(onClick = { connect(browser) }, enabled = busy == null,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Sign in with ${browser.name}", color = DesktopAccent)
+            }
+        }
+        if (busy != null) CircularProgressIndicator(modifier = Modifier.padding(22.dp).size(20.dp), color = DesktopAccent)
+        if (browsers.isEmpty()) Text("Install Chromium, Brave or Chrome to sign in with a browser.",
+            modifier = Modifier.padding(horizontal = 22.dp), color = DesktopSecondary)
+        TextButton(onClick = { manual = !manual }, enabled = busy == null) {
+            Text("Use a Spotify cookie", color = DesktopSecondary)
+        }
+        if (manual) {
+            Text("Sign in at open.spotify.com, then copy the sp_dc cookie from your browser's developer tools.",
+                modifier = Modifier.padding(horizontal = 22.dp), color = DesktopSecondary,
+                style = MaterialTheme.typography.bodySmall)
+            DialogField(value = token, onValueChange = { token = it }, placeholder = "sp_dc cookie",
+                enabled = busy == null, isPassword = true)
+            TextButton(onClick = {
+                DesktopPersistence().saveString("spotify_browser", "")
+                DesktopSpotifyToken.setCookie(token.trim())
+                onSaved(token.trim())
+                onDismiss()
+            }, enabled = busy == null && token.isNotBlank()) { Text("Save cookie", color = DesktopAccent) }
+        }
+        if (DesktopSpotifyToken.cookie().isNotBlank()) TextButton(onClick = {
+            DesktopSpotify.disconnect()
+            onSaved("")
+            onDismiss()
+        }, enabled = busy == null) { Text("Disconnect Spotify", color = DesktopSecondary) }
+        TextButton(onClick = ::dismiss) { Text(if (busy == null) "Close" else "Cancel", color = DesktopSecondary) }
+    }
+}
+
+/**
+ * ListenBrainz's user token.
+ *
+ * One field and no verification, as on Android: ListenBrainz has no endpoint
+ * that says whether a token is good, so the first listen is the test.
+ */
+@Composable
+internal fun DesktopListenBrainzTokenDialog(onDismiss: () -> Unit) {
+    var token by remember { mutableStateOf(DesktopScrobbleSettings.listenBrainzToken.value) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    fun save() {
+        DesktopScrobbleSettings.setListenBrainzToken(token.trim())
+        DesktopScrobbleSettings.setListenBrainzEnabled(token.isNotBlank())
+        onDismiss()
+    }
+
+    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 380) {
+        DialogHeading(
+            title = DesktopStrings["listenbrainz_token", "ListenBrainz token"],
+            message = DesktopStrings["d_found_on_your_listenbrainz_profile_under_settings", "Found on your ListenBrainz profile, under Settings."],
+        )
+        DialogField(
+            value = token,
+            onValueChange = { token = it },
+            placeholder = DesktopStrings["api_token", "API token"],
+            isPassword = true,
+            onSubmit = ::save,
+            modifier = Modifier.focusRequester(focus),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = panelInset(22.dp)),
+            horizontalArrangement = Arrangement.Start,
+        ) {
+            TextButton(onClick = { DesktopExternalLinks.open("https://listenbrainz.org/settings/") }) {
+                Text(DesktopStrings["d_open_listenbrainz", "Open ListenBrainz"], color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        DialogActions(
+            confirm = DesktopStrings["save", "Save"],
+            confirmEnabled = true,
+            busy = false,
+            onConfirm = ::save,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+@Composable
+private fun DialogHeading(title: String, message: String, isError: Boolean = false) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = panelInset(22.dp), vertical = 18.dp),
+        horizontalAlignment = if (LocalDesktopPanelIsPage.current) Alignment.Start else Alignment.CenterHorizontally,
+    ) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White,
+        )
+        Text(
+            message,
+            modifier = Modifier.padding(top = 5.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (isError) DesktopDestructive else DesktopSecondary,
+            textAlign = if (LocalDesktopPanelIsPage.current) TextAlign.Start else TextAlign.Center,
+        )
+    }
+}
+
+/** The same filled field the playlist dialogs use. */
+@Composable
+private fun DialogField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isPassword: Boolean = false,
+    imeAction: ImeAction = ImeAction.Done,
+    onSubmit: () -> Unit = {},
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = panelInset(22.dp))
+            .clip(RoundedCornerShape(11.dp))
+            .background(Color.White.copy(alpha = if (enabled) 0.08f else 0.04f))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = DesktopSecondary)
+            }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
+                cursorBrush = SolidColor(DesktopAccent),
+                visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(imeAction = imeAction),
+                keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+                modifier = modifier.fillMaxWidth().reportsTextEntryFocus(),
+            )
+        }
+        if (value.isNotEmpty() && enabled) {
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).clickable { onValueChange("") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Close, DesktopStrings["clear", "Clear"], tint = DesktopSecondary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogActions(
+    confirm: String,
+    confirmEnabled: Boolean,
+    busy: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = panelInset(16.dp), vertical = 12.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (busy) {
+            CircularProgressIndicator(
+                color = DesktopAccent,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(16.dp).padding(end = 0.dp),
+            )
+            Spacer(Modifier.size(12.dp))
+        }
+        TextButton(onClick = onDismiss, enabled = !busy) {
+            Text(DesktopStrings["cancel", "Cancel"], color = DesktopSecondary)
+        }
+        TextButton(onClick = onConfirm, enabled = confirmEnabled) {
+            Text(confirm, color = if (confirmEnabled) DesktopAccent else DesktopSecondary)
+        }
+    }
+}
+
+
+/**
+ * Discord's user token.
+ *
+ * Verified before it is kept — Android's alert does the same, because a token
+ * that was mistyped and one that has expired look identical until Discord is
+ * asked about it.
+ */
+@Composable
+internal fun DesktopDiscordTokenDialog(onDismiss: () -> Unit) {
+    var token by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    fun save() {
+        if (busy || token.isBlank()) return
+        busy = true
+        error = null
+        scope.launch {
+            DesktopDiscordRpc.signIn(token.trim())
+                .onSuccess { onDismiss() }
+                .onFailure { error = "Discord would not accept that token" }
+            busy = false
+        }
+    }
+
+    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 400) {
+        DialogHeading(
+            title = DesktopStrings["discord_token", "Discord token"],
+            message = error
+                ?: "Your account's own token, since Discord has no other way to let " +
+                "an app set your presence.",
+            isError = error != null,
+        )
+        DialogField(
+            value = token,
+            onValueChange = { token = it },
+            placeholder = DesktopStrings["token", "Token"],
+            enabled = !busy,
+            isPassword = true,
+            onSubmit = ::save,
+            modifier = Modifier.focusRequester(focus),
+        )
+        DialogActions(
+            confirm = if (busy) "Checking…" else "Save",
+            confirmEnabled = !busy && token.isNotBlank(),
+            busy = busy,
+            onConfirm = ::save,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+
+/**
+ * One free-text value — an activity name, a button label.
+ *
+ * [message] is where the caller explains the field, including which `{...}`
+ * variables it accepts, since that is the only place anyone would find out.
+ */
+@Composable
+internal fun DesktopTextValueDialog(
+    title: String,
+    message: String,
+    initial: String,
+    placeholder: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var value by remember { mutableStateOf(initial) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 400, popup = true) {
+        DialogHeading(title = title, message = message)
+        DialogField(
+            value = value,
+            onValueChange = { value = it },
+            placeholder = placeholder,
+            onSubmit = { onSave(value.trim()) },
+            modifier = Modifier.focusRequester(focus),
+        )
+        DialogActions(
+            confirm = DesktopStrings["save", "Save"],
+            confirmEnabled = true,
+            busy = false,
+            onConfirm = { onSave(value.trim()) },
+            onDismiss = onDismiss,
+        )
+    }
+}

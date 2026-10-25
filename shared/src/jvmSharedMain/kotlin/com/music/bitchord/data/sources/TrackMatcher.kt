@@ -101,11 +101,11 @@ object TrackMatcher {
     }
 
     /** The title with the packaging taken off, version markers kept. */
-    internal fun searchableTitle(title: String, artist: String = ""): String =
+    fun searchableTitle(title: String, artist: String = ""): String =
         parseTitle(title, artist).let { (it.words + it.versions).joinToString(" ") }
 
     /** The first credited artist — who a catalogue is most likely to file the track under. */
-    internal fun primaryArtist(artist: String): String =
+    fun primaryArtist(artist: String): String =
         normalize(artist).split(ARTIST_SEPARATORS).firstOrNull()?.trim().orEmpty()
 
     /** Whether both credits name at least one of the same artists. */
@@ -215,6 +215,7 @@ object TrackMatcher {
         val isTitleMatch = when {
             wanted.core == got.core -> true
             romajiOf(wanted.core) == romajiOf(got.core) -> true
+            sharesNativeTitle(target.title, target.artist, candidate.title, candidate.artist) -> true
             wanted.core.length <= 3 || got.core.length <= 3 -> false
             else -> wanted.core.contains(got.core) || got.core.contains(wanted.core)
         }
@@ -542,6 +543,39 @@ object TrackMatcher {
             }
 
     /**
+     * The cores a title may be filed under: its own, and, when a dash joins a native-script title
+     * to a romanised one, each side's.
+     *
+     * `彼女が冷たく笑ったら（Prologue…） - kanojo ga tsumetaku warattara (Prologue…)` is one title
+     * written twice, and YouTube keeps the romaji half as the identity while a tagged library
+     * files the track under the native half. Neither core is then the other's, and kanji has no
+     * reading to bridge them, so the track was written off as missing from a library that
+     * holds it. Limited to a dash joining a non-Latin side and a Latin one: "Paniyon Sa - Satyamev
+     * Jayate" is a song and its film, not two spellings, and must not match on the film.
+     */
+    internal fun coreAlternatives(raw: String, artist: String): Set<String> {
+        val own = parseTitle(raw, artist).core
+        val text = normalize(raw)
+        val dash = DASH.find(text) ?: return setOf(own)
+        val head = parseTitle(text.substring(0, dash.range.first), artist).core
+        val tail = parseTitle(text.substring(dash.range.last + 1), artist).core
+        if (head.isBlank() || tail.isBlank() || hasNonLatin(head) == hasNonLatin(tail)) return setOf(own)
+        return setOf(own, head, tail)
+    }
+
+    private fun hasNonLatin(text: String): Boolean = text.any { it.isLetter() && it.code > LAST_LATIN_LETTER }
+
+    /** Whether either title can be read as the other's native-script (or romanised) twin. */
+    internal fun sharesNativeTitle(wantedTitle: String, wantedArtist: String, gotTitle: String, gotArtist: String): Boolean {
+        val wanted = coreAlternatives(wantedTitle, wantedArtist)
+        val got = coreAlternatives(gotTitle, gotArtist)
+        // One side being a lone title is the ordinary case this exists for; two plain titles are
+        // the ordinary comparison's business and add nothing here.
+        if (wanted.size < 2 && got.size < 2) return false
+        return wanted.any { w -> w.isNotBlank() && w in got }
+    }
+
+    /**
      * Both spellings when a dash joins the same word in two scripts
      * ("コイコガレ - koikogare", either order). Empty unless the two sides
      * transliterate to each other, so a film packaging ("Paniyon Sa -
@@ -812,6 +846,9 @@ object TrackMatcher {
 
     private const val BRACKET_PASSES = 3
     private const val DASH_PASSES = 3
+
+    /** Latin Extended-B ends here; past it a letter belongs to some other script. */
+    private const val LAST_LATIN_LETTER = 0x024F
 
     private val BRACKETED = Regex("""[(\[]([^()\[\]]*)[)\]]""")
     private val DASH = Regex("""\s+[-–—|]+\s+""")

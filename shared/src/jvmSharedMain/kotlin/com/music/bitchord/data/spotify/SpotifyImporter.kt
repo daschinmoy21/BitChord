@@ -20,6 +20,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -65,10 +66,10 @@ object SpotifyImporter {
             return id.takeIf { PLAYLIST_ID.matches(it) }
         }
 
-        val uri = runCatching { java.net.URI(trimmed) }.getOrNull() ?: return null
-        if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
-        if (!isSpotifyHost(uri.host?.lowercase().orEmpty())) return null
-        val segments = uri.path.orEmpty().split('/').filter { it.isNotEmpty() }
+        val uri = trimmed.toHttpUrlOrNull() ?: return null
+        if (uri.scheme.lowercase() !in setOf("http", "https")) return null
+        if (!isSpotifyHost(uri.host.lowercase())) return null
+        val segments = uri.pathSegments
         val playlistIdx = segments.indexOf("playlist")
         if (playlistIdx == -1 || playlistIdx + 1 >= segments.size) return null
         return segments[playlistIdx + 1].takeIf { PLAYLIST_ID.matches(it) }

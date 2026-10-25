@@ -1,6 +1,15 @@
 # Maintainers
 
-This document lists the maintainers responsible for BitChord.
+## This fork
+
+[@daschinmoy21](https://github.com/daschinmoy21) maintains this personal fork, its NixOS/niri
+setup, desktop UX changes, releases, and pull request reviews. Selected changes may be
+submitted upstream after they have settled here.
+
+## Upstream BitChord
+
+The original project is maintained separately at
+[kushagrasinghx/BitChord](https://github.com/kushagrasinghx/BitChord):
 
 | Maintainer | GitHub | Responsibilities |
 |---|---|---|
@@ -8,43 +17,48 @@ This document lists the maintainers responsible for BitChord.
 
 ## Responsibilities
 
-Maintainers oversee project direction, repository maintenance, review and merging of contributions, and release management.
+Fork issues and pull requests belong in this repository. Changes submitted upstream follow upstream’s own review and release process.
 
 ## Contributors
 
-This list is automatically generated from GitHub repository contributor data.
+This list is automatically generated from this repository’s GitHub contributor data and includes the upstream history inherited by the fork.
 
 <!-- BEGIN CONTRIBUTORS -->
 - [@kushagrasinghx](https://github.com/kushagrasinghx)
 - [@Galaxyyss](https://github.com/Galaxyyss)
+- [@daschinmoy21](https://github.com/daschinmoy21)
 - [@KabirSinghBhatia](https://github.com/KabirSinghBhatia)
+- [@claude](https://github.com/claude)
 - [@NeoTurcios](https://github.com/NeoTurcios)
-- [@itsmeadarsh2008](https://github.com/itsmeadarsh2008)
 - [@MaverickRox](https://github.com/MaverickRox)
+- [@itsmeadarsh2008](https://github.com/itsmeadarsh2008)
 - [@penetratorcwl](https://github.com/penetratorcwl)
 - [@Kaaaaii](https://github.com/Kaaaaii)
-- [@claude](https://github.com/claude)
 - [@hongducdev](https://github.com/hongducdev)
 - [@kmmiio99o](https://github.com/kmmiio99o)
-- [@byburak3525](https://github.com/byburak3525)
 - [@AbhiTheModder](https://github.com/AbhiTheModder)
+- [@byburak3525](https://github.com/byburak3525)
+- [@cengo12](https://github.com/cengo12)
 - [@tadikwa](https://github.com/tadikwa)
 - [@samlehoy](https://github.com/samlehoy)
 - [@apricotbucket28](https://github.com/apricotbucket28)
 - [@nitinbhat972](https://github.com/nitinbhat972)
 - [@AngelCas04](https://github.com/AngelCas04)
 - [@rairulyle](https://github.com/rairulyle)
+- [@kavinned](https://github.com/kavinned)
+- [@santhoshg-io](https://github.com/santhoshg-io)
 - [@CHEYCKIT](https://github.com/CHEYCKIT)
 - [@tmyt105](https://github.com/tmyt105)
 - [@Mra1k3r0](https://github.com/Mra1k3r0)
 - [@hawk200545](https://github.com/hawk200545)
 - [@hasanbkaylan](https://github.com/hasanbkaylan)
 - [@chaudharyjatin115](https://github.com/chaudharyjatin115)
+- [@uveshm003](https://github.com/uveshm003)
 - [@Eful97](https://github.com/Eful97)
 - [@aryasarukkai](https://github.com/aryasarukkai)
 - [@AniXDex](https://github.com/AniXDex)
 - [@yxyydev](https://github.com/yxyydev)
-- [@santhoshg-io](https://github.com/santhoshg-io)
+- [@steeben](https://github.com/steeben)
 - [@nxfu](https://github.com/nxfu)
 - [@jackychan4891](https://github.com/jackychan4891)
 - [@mmw1984](https://github.com/mmw1984)
@@ -58,7 +72,6 @@ This list is automatically generated from GitHub repository contributor data.
 - [@MaximeLeBesnerais](https://github.com/MaximeLeBesnerais)
 - [@InfantAjith96](https://github.com/InfantAjith96)
 - [@Elitenotavailable](https://github.com/Elitenotavailable)
-- [@cengo12](https://github.com/cengo12)
 - [@BernoldM](https://github.com/BernoldM)
 - [@bazilbycom](https://github.com/bazilbycom)
 - [@Aimar-18](https://github.com/Aimar-18)

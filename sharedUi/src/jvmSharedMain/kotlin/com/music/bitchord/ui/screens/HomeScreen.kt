@@ -174,44 +174,46 @@ fun HomeScreen(
                 }
             }
             when (state) {
-                is UiState.Loading -> {
-                    if (recentlyPlayedLoading) {
-                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
-                        // Recents owns the leading layout while its request is
-                        // pending, so the feed behind it starts with ordinary
-                        // shelf placeholders rather than another hero card.
-                        feedSkeleton(firstIsHero = false)
-                    } else {
-                        feedSkeleton(firstIsHero = leadHero)
-                    }
-                }
+                // Discovery leads the page and Recents follows it, so the
+                // skeleton for Recents sits second, under the lead shelf.
+                is UiState.Loading -> feedSkeleton(firstIsHero = leadHero)
                 is UiState.Error -> item {
                     MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
                 }
                 is UiState.Success -> {
-                    if (recentlyPlayedLoading) {
-                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
+                    val ordered = state.data.discoveryFirst()
+                    val recentsToggle = {
+                        AppUi.host.setHomeRecentsViewType(
+                            if (recentsViewType == LibraryViewType.LIST) {
+                                LibraryViewType.GRID
+                            } else {
+                                LibraryViewType.LIST
+                            },
+                        )
                     }
-                    // The loading skeleton already owns the hero slot. Until
-                    // Recently Played lands, every real shelf must retain its
-                    // compact-card layout instead of briefly becoming a hero.
                     itemsIndexedShelves(
-                        shelves = state.data,
+                        shelves = ordered.take(1),
                         onItemClick = onItemClick,
                         onItemLongPress = onItemLongPress,
                         currentSong = currentSong,
                         isPlaying = isPlaying,
-                        firstIsHero = leadHero && !recentlyPlayedLoading,
+                        firstIsHero = leadHero,
                         recentsViewType = recentsViewType,
-                        onRecentsViewTypeToggle = {
-                            AppUi.host.setHomeRecentsViewType(
-                                if (recentsViewType == LibraryViewType.LIST) {
-                                    LibraryViewType.GRID
-                                } else {
-                                    LibraryViewType.LIST
-                                },
-                            )
-                        },
+                        onRecentsViewTypeToggle = recentsToggle,
+                    )
+                    if (recentlyPlayedLoading) {
+                        recentlyPlayedSkeleton(listLayout = recentsViewType == LibraryViewType.LIST)
+                    }
+                    itemsIndexedShelves(
+                        shelves = ordered.drop(1),
+                        onItemClick = onItemClick,
+                        onItemLongPress = onItemLongPress,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        firstIsHero = false,
+                        recentsViewType = recentsViewType,
+                        onRecentsViewTypeToggle = recentsToggle,
+                        startIndex = 1,
                     )
                     if (loadingMore) feedMoreSkeleton()
                 }
@@ -240,6 +242,34 @@ fun HomeScreen(
 }
 
 /**
+ * Home's order: a discovery shelf first — the first recommendation the feed
+ * carries, else its first shelf that isn't a replay of listening — then
+ * Recents, then everything else as it arrived.
+ */
+private fun List<HomeShelf>.discoveryFirst(): List<HomeShelf> {
+    val recents = firstOrNull { it.title.equals(RECENTS_TITLE, ignoreCase = true) }
+    val others = filter { it !== recents }
+    val lead = others.firstOrNull { it.isDiscovery() }
+        ?: others.firstOrNull { !it.title.trim().equals(LISTEN_AGAIN_TITLE, ignoreCase = true) }
+        ?: others.firstOrNull()
+    return listOfNotNull(lead, recents) + others.filter { it !== lead }
+}
+
+private fun HomeShelf.isDiscovery(): Boolean {
+    val name = title.trim()
+    return DISCOVERY_TITLES.any { name.equals(it, ignoreCase = true) } ||
+        DISCOVERY_WORDS.any { name.contains(it, ignoreCase = true) }
+}
+
+private const val LISTEN_AGAIN_TITLE = "Listen again"
+
+/** YouTube Music's recommendation shelves, by their whole title. */
+private val DISCOVERY_TITLES = listOf("Quick picks", "Mixed for you", "Discover mix")
+
+/** Words that mark a shelf as a recommendation wherever they appear in its title. */
+private val DISCOVERY_WORDS = listOf("recommend", "discover", "for you", "similar to")
+
+/**
  * Recents mirrors the artist page's top-tracks pager. Any other lead shelf keeps
  * Apple's full-bleed treatment, while the remaining shelves use square cards.
  */
@@ -252,11 +282,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.itemsIndexedShelves(
     firstIsHero: Boolean = true,
     recentsViewType: LibraryViewType,
     onRecentsViewTypeToggle: () -> Unit,
+    /** Where [shelves] start on the page, for keys that stay unique across calls. */
+    startIndex: Int = 0,
 ) {
-    shelves.forEachIndexed { index, shelf ->
+    shelves.forEachIndexed { offset, shelf ->
+        val index = startIndex + offset
         item(key = shelf.title + index) {
             val openItem: (ShelfItem) -> Unit = { item -> onItemClick(item, shelf.title) }
-            if (index == 0 && shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
+            if (shelf.title.equals(RECENTS_TITLE, ignoreCase = true)) {
                 RecentShelf(
                     shelf = shelf,
                     onItemClick = openItem,

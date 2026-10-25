@@ -67,8 +67,8 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = rootProject.extra["bitchordVersionCode"] as Int
-        versionName = rootProject.extra["bitchordVersionName"] as String
+        versionCode = 31
+        versionName = providers.gradleProperty("bitchord.version").orElse("1.11.0").get().removePrefix("v")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -206,6 +206,7 @@ android {
     }
     testOptions {
         unitTests {
+            isIncludeAndroidResources = true
             // Unit tests run against a stub android.jar whose methods throw
             // rather than return. That is the right default for anything whose
             // behaviour depends on the framework, and wrong for android.util.Log
@@ -420,6 +421,7 @@ dependencies {
     implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     // A real HTTP server for the addon tests. The addon protocol is entirely
     // "what does this app send, and what does it do with what comes back", and
     // a hand-rolled fake of the client would be a test of the fake. Pinned to
@@ -519,4 +521,12 @@ if (providers.gradleProperty("bitchord.bundleWear").orNull != "false" && findPro
         }
         variant.sources.assets?.addGeneratedSourceDirectory(bundle, BundleWearApk::outputDir)
     }
+}
+
+// conscrypt-android (for the watch installer above) is Android's native build of
+// Conscrypt. On the JVM unit-test classpath it shadows the conscrypt-openjdk
+// classes Robolectric installs as its security provider, whose native library
+// then fails to load (UnsatisfiedLinkError) in every Robolectric test.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
 }

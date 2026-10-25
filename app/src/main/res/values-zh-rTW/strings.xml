@@ -564,6 +564,7 @@
     <string name="sort_music">排序方式</string>
     <string name="sort_title_ascending">按字母順序（A 到 Z）</string>
     <string name="sort_title_descending">按字母順序（Z 到 A）</string>
+    <string name="sort_recently_played">最近播放</string>
     <string name="sort_date_added">新增日期（最新優先）</string>
     <string name="sort_date_modified">修改日期（最新優先）</string>
     <string name="use_all_audio_folders">使用所有音訊資料夾</string>
@@ -1348,4 +1349,12 @@
     <string name="song_info_unavailable">暫無資訊</string>
     <string name="song_info_error">部分資訊無法載入。</string>
     <string name="song_info_retry">重試</string>
+    <string name="story_share_title">分享動態</string>
+    <string name="story_share_description">選擇背景，然後儲存或分享卡片。</string>
+    <string name="story_style_artwork">封面</string>
+    <string name="story_style_colour">色彩</string>
+    <string name="story_style_dark">深色</string>
+    <string name="story_recent_title">最近播放</string>
+    <string name="story_share_link">分享連結</string>
+    <string name="story_export_error">無法儲存或分享圖片。請重試。</string>
 </resources>

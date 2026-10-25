@@ -1,0 +1,408 @@
+package com.music.bitchord.desktop
+
+import androidx.compose.runtime.tooling.ComposeToolingApi
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.awt.ComposeWindow
+import com.music.bitchord.ui.components.TextEntryFocus
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import java.awt.KeyEventDispatcher
+import java.awt.KeyEventPostProcessor
+import java.awt.KeyboardFocusManager
+import java.awt.Window
+import java.awt.event.KeyEvent
+import javax.swing.SwingUtilities
+
+/** What the whole-window keys can ask for. */
+internal enum class DesktopGlobalAction(
+    /** Whether holding the key keeps asking, as for seeking and volume, rather than once per press. */
+    val repeats: Boolean = false,
+    /** Whether the keystroke would also type a character into whatever has the focus. */
+    val typesCharacter: Boolean = false,
+) {
+    PLAY_PAUSE,
+    ZOOM_IN,
+    ZOOM_OUT,
+    ZOOM_RESET,
+    SEEK_BACK(repeats = true),
+    SEEK_FORWARD(repeats = true),
+    SEEK_BACK_LONG(repeats = true),
+    SEEK_FORWARD_LONG(repeats = true),
+    PREVIOUS,
+    NEXT,
+    VOLUME_UP(repeats = true),
+    VOLUME_DOWN(repeats = true),
+    MUTE(typesCharacter = true),
+    FOCUS_SEARCH(typesCharacter = true),
+    SHOW_SHORTCUTS(typesCharacter = true),
+    NAVIGATE(typesCharacter = true),
+    SCROLL_DOWN(repeats = true, typesCharacter = true),
+    SCROLL_UP(repeats = true, typesCharacter = true),
+    PAGE_DOWN(repeats = true, typesCharacter = true),
+    PAGE_UP(repeats = true, typesCharacter = true),
+    BACK(typesCharacter = true),
+    FORWARD(typesCharacter = true),
+}
+
+/**
+ * The keys that mean the same wherever the focus happens to be.
+ *
+ * Compose only hands a key to the part of the UI that has focus, and clicking an empty stretch of
+ * page leaves nothing focused — or leaves the focus on whichever button was last pressed, which then
+ * takes Space for itself. These are caught one layer lower, in AWT, before Compose sees them.
+ */
+internal object DesktopGlobalKeys {
+    /** Set by the app: plays or pauses when a track is loaded, and says whether it did. */
+    @Volatile
+    var togglePlayPause: (() -> Boolean)? = null
+
+    /**
+     * Set by the app, each answering whether it did anything (nothing loaded, or a party that has
+     * locked the controls, answers false and the key is left alone). Run on the UI thread.
+     */
+    @Volatile
+    var seekBy: ((deltaMs: Long) -> Boolean)? = null
+
+    @Volatile
+    var skipPrevious: (() -> Boolean)? = null
+
+    @Volatile
+    var skipNext: (() -> Boolean)? = null
+
+    @Volatile
+    var stepVolume: ((delta: Float) -> Boolean)? = null
+
+    @Volatile
+    var toggleMute: (() -> Boolean)? = null
+
+    @Volatile
+    var focusSearch: (() -> Boolean)? = null
+
+    @Volatile
+    var showShortcuts: (() -> Boolean)? = null
+
+    /**
+     * Set by the app: closes the shortcuts cheat sheet if it is open, and says whether it was. Esc
+     * goes here first, so the sheet closes even when nothing inside the window has the focus.
+     */
+    @Volatile
+    var closeShortcuts: (() -> Boolean)? = null
+
+    /**
+     * Set by the app: opens the page the sidebar lists at [index] (1 is Home; 9 is Settings), and
+     * says whether there was one.
+     */
+    @Volatile
+    var navigate: ((index: Int) -> Boolean)? = null
+
+    /** Set by the app: back and forward through the places visited, each saying whether it moved. */
+    @Volatile
+    var goBack: (() -> Boolean)? = null
+
+    @Volatile
+    var goForward: (() -> Boolean)? = null
+
+    /** Which action [keyCode] with these modifiers asks for, or null when it asks for nothing here. */
+    internal fun actionFor(
+        keyCode: Int,
+        ctrl: Boolean,
+        alt: Boolean,
+        meta: Boolean,
+        textEntryActive: Boolean,
+        shift: Boolean = false,
+        volumeShortcutsActive: Boolean = true,
+    ): DesktopGlobalAction? {
+        if (alt || meta) return null
+        if (ctrl) {
+            return when (keyCode) {
+                KeyEvent.VK_EQUALS, KeyEvent.VK_PLUS, KeyEvent.VK_ADD -> DesktopGlobalAction.ZOOM_IN
+                KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT -> DesktopGlobalAction.ZOOM_OUT
+                KeyEvent.VK_0, KeyEvent.VK_NUMPAD0 -> DesktopGlobalAction.ZOOM_RESET
+                // Ctrl+K types nothing, so it is the way to the search box from inside another one.
+                KeyEvent.VK_K -> if (shift) null else DesktopGlobalAction.FOCUS_SEARCH
+                // Ctrl and a digit types nothing either: the sidebar's pages, in the order it lists them.
+                in KeyEvent.VK_1..KeyEvent.VK_9 -> if (shift) null else DesktopGlobalAction.NAVIGATE
+                // Ctrl with the arrows moves a caret by words, and a slider by more.
+                KeyEvent.VK_LEFT -> if (textEntryActive || shift) null else DesktopGlobalAction.PREVIOUS
+                KeyEvent.VK_RIGHT -> if (textEntryActive || shift) null else DesktopGlobalAction.NEXT
+                else -> null
+            }
+        }
+        // A space, an "m" or an arrow typed into a text box belongs to the box.
+        if (textEntryActive) return null
+        return when (keyCode) {
+            KeyEvent.VK_SPACE -> DesktopGlobalAction.PLAY_PAUSE
+            KeyEvent.VK_LEFT ->
+                if (shift) DesktopGlobalAction.SEEK_BACK_LONG else DesktopGlobalAction.SEEK_BACK
+            KeyEvent.VK_RIGHT ->
+                if (shift) DesktopGlobalAction.SEEK_FORWARD_LONG else DesktopGlobalAction.SEEK_FORWARD
+            KeyEvent.VK_UP -> DesktopGlobalAction.VOLUME_UP.takeIf { !shift && volumeShortcutsActive }
+            KeyEvent.VK_DOWN -> DesktopGlobalAction.VOLUME_DOWN.takeIf { !shift && volumeShortcutsActive }
+            KeyEvent.VK_M -> if (shift) null else DesktopGlobalAction.MUTE
+            // Scrolling the page, as Vimium and less do.
+            KeyEvent.VK_J -> if (shift) DesktopGlobalAction.VOLUME_DOWN.takeIf { volumeShortcutsActive }
+                else DesktopGlobalAction.SCROLL_DOWN
+            KeyEvent.VK_K -> if (shift) DesktopGlobalAction.VOLUME_UP.takeIf { volumeShortcutsActive }
+                else DesktopGlobalAction.SCROLL_UP
+            KeyEvent.VK_D -> if (shift) null else DesktopGlobalAction.PAGE_DOWN
+            KeyEvent.VK_U -> if (shift) null else DesktopGlobalAction.PAGE_UP
+            // Shift and H or L: back and forward, as Vimium has them.
+            KeyEvent.VK_H -> if (shift) DesktopGlobalAction.BACK else null
+            KeyEvent.VK_L -> if (shift) DesktopGlobalAction.FORWARD else null
+            // "?" is Shift and the slash key.
+            KeyEvent.VK_SLASH ->
+                if (shift) DesktopGlobalAction.SHOW_SHORTCUTS else DesktopGlobalAction.FOCUS_SEARCH
+            else -> null
+        }
+    }
+
+    internal const val SEEK_STEP_MS = 5_000L
+    internal const val SEEK_LONG_STEP_MS = 15_000L
+    internal const val VOLUME_STEP = 0.05f
+
+    // How far j and k, and d and u, scroll: a share of the scrolled area's own height.
+    private const val SCROLL_STEP = 0.15f
+    private const val PAGE_STEP = 0.5f
+
+    /**
+     * Whether an AWT key event belongs to a Space keystroke. The KEY_TYPED event of a keystroke has
+     * no key code at all (VK_UNDEFINED), only the character, so it is told apart by that.
+     */
+    internal fun isPartOfSpace(id: Int, keyCode: Int, keyChar: Char): Boolean = when (id) {
+        KeyEvent.KEY_TYPED -> keyChar == ' '
+        else -> keyCode == KeyEvent.VK_SPACE
+    }
+
+    /**
+     * Whether a KEY_TYPED event is the character a Ctrl+plus, minus or zero keystroke would
+     * otherwise type into a focused text box. A typed event has no key code, so [actionFor] cannot
+     * see it; without this the zoom worked but the box got an "=" or "-" as well.
+     */
+    internal fun isZoomTyped(keyChar: Char, ctrl: Boolean, alt: Boolean, meta: Boolean): Boolean =
+        ctrl && !alt && !meta && keyChar in ZOOM_CHARS
+
+    private const val ZOOM_CHARS = "=+-0"
+
+    private var spaceHeld = false
+    private var volumeShortcutWindow: ComposeWindow? = null
+
+    @OptIn(ComposeToolingApi::class, ExperimentalComposeUiApi::class)
+    private val volumePostProcessor = KeyEventPostProcessor { event ->
+        val eventWindow = event.component as? Window ?: SwingUtilities.getWindowAncestor(event.component)
+        val window = volumeShortcutWindow
+        handleVolumeKeyEvent(
+            event,
+            textEntryActive = TextEntryFocus.active,
+            // Dialogs and popups own their keys, including popups drawn on the main canvas.
+            volumeShortcutsActive = window != null && eventWindow === window && window.semanticsOwners.size == 1,
+        )
+    }
+
+    /** Focused controls and local bindings get first chance; only unused volume keys reach here. */
+    internal fun handleVolumeKeyEvent(
+        event: KeyEvent,
+        textEntryActive: Boolean,
+        volumeShortcutsActive: Boolean,
+    ): Boolean {
+        if (event.isConsumed || !volumeShortcutsActive || textEntryActive) return false
+        val keyCode = if (event.id == KeyEvent.KEY_TYPED) {
+            when (event.keyChar) {
+                'J' -> KeyEvent.VK_J
+                'K' -> KeyEvent.VK_K
+                else -> return false
+            }
+        } else event.keyCode
+        val action = actionFor(keyCode, event.isControlDown, event.isAltDown, event.isMetaDown,
+            textEntryActive, event.isShiftDown, volumeShortcutsActive)
+        if (action != DesktopGlobalAction.VOLUME_UP && action != DesktopGlobalAction.VOLUME_DOWN) return false
+        if (stepVolume == null) return false
+        return if (event.id == KeyEvent.KEY_PRESSED) perform(action, keyCode) else true
+    }
+
+    // Keys taken on their press, so their release (and typed echo) is taken with them.
+    private val heldKeys = mutableMapOf<Int, DesktopGlobalAction>()
+    private var typedEchoPending = false
+
+    /** Runs what [action] asks of the app, and says whether the app did it. */
+    private fun perform(action: DesktopGlobalAction, keyCode: Int): Boolean = when (action) {
+        DesktopGlobalAction.SEEK_BACK -> seekBy?.invoke(-SEEK_STEP_MS)
+        DesktopGlobalAction.SEEK_FORWARD -> seekBy?.invoke(SEEK_STEP_MS)
+        DesktopGlobalAction.SEEK_BACK_LONG -> seekBy?.invoke(-SEEK_LONG_STEP_MS)
+        DesktopGlobalAction.SEEK_FORWARD_LONG -> seekBy?.invoke(SEEK_LONG_STEP_MS)
+        DesktopGlobalAction.PREVIOUS -> skipPrevious?.invoke()
+        DesktopGlobalAction.NEXT -> skipNext?.invoke()
+        DesktopGlobalAction.VOLUME_UP -> stepVolume?.invoke(VOLUME_STEP)
+        DesktopGlobalAction.VOLUME_DOWN -> stepVolume?.invoke(-VOLUME_STEP)
+        DesktopGlobalAction.MUTE -> toggleMute?.invoke()
+        DesktopGlobalAction.FOCUS_SEARCH -> focusSearch?.invoke()
+        DesktopGlobalAction.SHOW_SHORTCUTS -> showShortcuts?.invoke()
+        DesktopGlobalAction.NAVIGATE -> navigate?.invoke(keyCode - KeyEvent.VK_0)
+        DesktopGlobalAction.SCROLL_DOWN -> DesktopKeyboardHints.scroll(SCROLL_STEP)
+        DesktopGlobalAction.SCROLL_UP -> DesktopKeyboardHints.scroll(-SCROLL_STEP)
+        DesktopGlobalAction.PAGE_DOWN -> DesktopKeyboardHints.scroll(PAGE_STEP)
+        DesktopGlobalAction.PAGE_UP -> DesktopKeyboardHints.scroll(-PAGE_STEP)
+        DesktopGlobalAction.BACK -> goBack?.invoke()
+        DesktopGlobalAction.FORWARD -> goForward?.invoke()
+        else -> false
+    } ?: false
+
+    private fun isPlaybackKeyAction(action: DesktopGlobalAction) = when (action) {
+        DesktopGlobalAction.PLAY_PAUSE,
+        DesktopGlobalAction.ZOOM_IN,
+        DesktopGlobalAction.ZOOM_OUT,
+        DesktopGlobalAction.ZOOM_RESET,
+        -> false
+        else -> true
+    }
+
+    private val dispatcher = KeyEventDispatcher { event ->
+        // Ctrl on its own, and the hints it brings up, come before everything else.
+        if (DesktopKeyboardHints.onKey(event)) return@KeyEventDispatcher true
+        // The release and typed echo of a key that was taken go with it.
+        if (event.id == KeyEvent.KEY_RELEASED && heldKeys.remove(event.keyCode) != null) {
+            typedEchoPending = heldKeys.values.any { it.typesCharacter }
+            return@KeyEventDispatcher true
+        }
+        if (event.id == KeyEvent.KEY_TYPED && typedEchoPending) return@KeyEventDispatcher true
+        if (event.id == KeyEvent.KEY_PRESSED && event.keyCode == KeyEvent.VK_ESCAPE &&
+            event.modifiersEx == 0 && closeShortcuts?.invoke() == true
+        ) {
+            heldKeys[event.keyCode] = DesktopGlobalAction.SHOW_SHORTCUTS
+            typedEchoPending = true
+            return@KeyEventDispatcher true
+        }
+        val action = actionFor(
+            keyCode = event.keyCode,
+            ctrl = event.isControlDown,
+            alt = event.isAltDown,
+            meta = event.isMetaDown,
+            textEntryActive = TextEntryFocus.active,
+            shift = event.isShiftDown,
+        )
+        // Volume is handled after Compose, so arrows can still navigate menus and adjust sliders.
+        if (action == DesktopGlobalAction.VOLUME_UP || action == DesktopGlobalAction.VOLUME_DOWN) {
+            return@KeyEventDispatcher false
+        }
+        if (action != null && isPlaybackKeyAction(action)) {
+            if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
+            return@KeyEventDispatcher handlePlaybackPress(event.keyCode, action)
+        }
+        // The typed echo of a zoom key (it carries the character but no key code) is taken too.
+        if (action == null && event.id == KeyEvent.KEY_TYPED &&
+            isZoomTyped(event.keyChar, event.isControlDown, event.isAltDown, event.isMetaDown)
+        ) {
+            return@KeyEventDispatcher true
+        }
+        when (action) {
+            null -> {
+                // The release of a Space that was taken must be taken too, or the control that
+                // would have had it sees half a keystroke.
+                if (spaceHeld && isPartOfSpace(event.id, event.keyCode, event.keyChar)) {
+                    if (event.id == KeyEvent.KEY_RELEASED) spaceHeld = false
+                    true
+                } else {
+                    false
+                }
+            }
+            DesktopGlobalAction.PLAY_PAUSE -> when (event.id) {
+                KeyEvent.KEY_PRESSED -> {
+                    val toggle = togglePlayPause
+                    if (spaceHeld) {
+                        // Key repeat: already taken.
+                        true
+                    } else if (toggle != null && toggle()) {
+                        spaceHeld = true
+                        true
+                    } else {
+                        false
+                    }
+                }
+                KeyEvent.KEY_TYPED -> spaceHeld
+                KeyEvent.KEY_RELEASED -> (spaceHeld).also { spaceHeld = false }
+                else -> false
+            }
+            else -> {
+                if (event.id == KeyEvent.KEY_PRESSED) {
+                    when (action) {
+                        DesktopGlobalAction.ZOOM_IN -> DesktopUiScale.zoomIn()
+                        DesktopGlobalAction.ZOOM_OUT -> DesktopUiScale.zoomOut()
+                        else -> DesktopUiScale.reset()
+                    }
+                }
+                // Taken on every phase, so a text box never receives the + or - it was not meant to.
+                true
+            }
+        }
+    }
+
+    /** Tracks the action as well as the physical key, so changed modifiers start a new action. */
+    internal fun handlePlaybackPress(keyCode: Int, action: DesktopGlobalAction): Boolean {
+        if (heldKeys[keyCode] == action && !action.repeats) return true
+        if (!perform(action, keyCode)) {
+            heldKeys.remove(keyCode)
+            typedEchoPending = heldKeys.values.any { it.typesCharacter }
+            return false
+        }
+        heldKeys[keyCode] = action
+        typedEchoPending = heldKeys.values.any { it.typesCharacter }
+        return true
+    }
+
+    internal fun releasePlaybackKey(keyCode: Int) {
+        heldKeys.remove(keyCode)
+        typedEchoPending = heldKeys.values.any { it.typesCharacter }
+    }
+
+    private var installed = false
+
+    @Synchronized
+    fun install(window: ComposeWindow) {
+        volumeShortcutWindow = window
+        if (installed) return
+        installed = true
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher)
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventPostProcessor(volumePostProcessor)
+    }
+}
+
+/** How big the interface is drawn, changed with Ctrl and plus, minus or zero. */
+internal object DesktopUiScale {
+    private const val KEY = "ui_scale"
+    internal val STEPS = listOf(0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+    private val persistence = DesktopPersistence()
+    private val _scale = MutableStateFlow(nearestStep(persistence.string(KEY, "").toFloatOrNull() ?: 1f))
+
+    val scale: StateFlow<Float> = _scale
+
+    /**
+     * Counts up on every keyboard zoom, so the indicator can show again even when the step lands on
+     * a value it already showed. The Settings slider does not count: it shows the number itself.
+     */
+    private val _keyboardZooms = MutableStateFlow(0L)
+
+    val keyboardZooms: StateFlow<Long> = _keyboardZooms
+
+    fun zoomIn() = zoomFromKeyboard(STEPS.firstOrNull { it > _scale.value + EPSILON } ?: STEPS.last())
+
+    fun zoomOut() = zoomFromKeyboard(STEPS.lastOrNull { it < _scale.value - EPSILON } ?: STEPS.first())
+
+    fun reset() = zoomFromKeyboard(1f)
+
+    /** Sets the scale from the Settings slider or its reset button. */
+    fun select(value: Float) = set(nearestStep(value))
+
+    private fun zoomFromKeyboard(value: Float) {
+        set(value)
+        _keyboardZooms.value++
+    }
+
+    private fun set(value: Float) {
+        _scale.value = value
+        persistence.saveString(KEY, value.toString())
+    }
+
+    internal fun nearestStep(value: Float): Float = STEPS.minByOrNull { kotlin.math.abs(it - value) } ?: 1f
+
+    private const val EPSILON = 0.001f
+}

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import org.jsoup.nodes.TextNode
@@ -61,13 +62,13 @@ object Genius {
             .build()
     }
 
-    suspend fun lyrics(title: String, artist: String): List<LyricLine>? = withContext(Dispatchers.IO) {
+    suspend fun lyrics(title: String, artist: String, client: OkHttpClient = httpClient): List<LyricLine>? = withContext(Dispatchers.IO) {
         runCatching {
-            scrapeLyrics(title, artist)
+            scrapeLyrics(title, artist, client)
         }.getOrNull()
     }
 
-    private fun scrapeLyrics(title: String, artist: String): List<LyricLine>? {
+    private fun scrapeLyrics(title: String, artist: String, client: OkHttpClient): List<LyricLine>? {
         val cleanTitle = cleanQuery(title)
         val cleanArtist = cleanQuery(artist)
 
@@ -124,10 +125,10 @@ object Genius {
         val distinctAttempts = searchAttempts.distinctBy { it.query }
 
         val songUrl = distinctAttempts.asSequence()
-            .mapNotNull { attempt -> searchSongUrl(attempt.query, attempt.title, attempt.artist) }
+            .mapNotNull { attempt -> searchSongUrl(attempt.query, attempt.title, attempt.artist, client) }
             .firstOrNull() ?: return null
 
-        val html = fetchHtml(songUrl)
+        val html = httpGet(songUrl, client)
         if (html.isNullOrBlank()) return null
 
         val lines = parseHtml(html)
@@ -142,9 +143,9 @@ object Genius {
         return searchSongUrl("$cleanArtist $cleanTitle".trim(), cleanTitle, cleanArtist)
     }
 
-    private fun searchSongUrl(query: String, targetTitle: String, targetArtist: String): String? {
+    private fun searchSongUrl(query: String, targetTitle: String, targetArtist: String, client: OkHttpClient = httpClient): String? {
         val url = "https://genius.com/api/search/multi?q=${URLEncoder.encode(query, "UTF-8")}"
-        val responseBody = httpGet(url) ?: return null
+        val responseBody = httpGet(url, client) ?: return null
 
         return runCatching {
             val root = json.parseToJsonElement(responseBody).jsonObject
@@ -324,19 +325,17 @@ object Genius {
         val artist: String,
     )
 
-    private fun httpGet(url: String): String? = runCatching {
+    private fun httpGet(url: String, client: OkHttpClient): String? = runCatching {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8")
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
-        httpClient.newCall(request).execute().use { response ->
+        client.newCall(request).execute().use { response ->
             if (response.isSuccessful) response.body?.string() else null
         }
     }.getOrNull()
-
-    private fun fetchHtml(url: String): String? = httpGet(url)
 
     private val TITLE_SEPARATOR by lazy { Regex("""\s*[-–—:]\s*""") }
     private val DECORATIVE_CHARS by lazy { Regex("""[♪♫★☆【】《》「」~_]""") }

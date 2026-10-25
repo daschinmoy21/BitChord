@@ -56,3 +56,25 @@ internal expect fun DrawScope.clipShiftedDown(
     dy: Float,
     block: DrawScope.() -> Unit,
 )
+
+/**
+ * Whether the lyric playhead should advance.
+ *
+ * On the phone this is true only while the activity is RESUMED, so a phone in
+ * a pocket does not render lyrics at frame rate. On the desktop this is true
+ * while the window is open on screen. Compose Desktop pauses the lifecycle
+ * when the AWT window loses focus, and a visible unfocused window still has to
+ * move the lyrics. The clock stops when the window is hidden to the tray.
+ */
+@Composable
+internal expect fun rememberLyricClockActive(): Boolean
+
+/**
+ * Nanoseconds at which the lyric clock should take its next step.
+ *
+ * The phone returns the vsync time from `withFrameNanos`. The compose scene
+ * produces a frame only on demand, and an unfocused AWT window may never
+ * request one. Waiting there would leave the playhead blocked until focus
+ * returned. The desktop waits about one frame and returns [System.nanoTime].
+ */
+internal expect suspend fun awaitLyricFrameNanos(): Long
