@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import com.music.bitchord.ui.components.PageScrollbar
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -219,6 +220,7 @@ fun HomeScreen(
                 }
             }
         }
+        PageScrollbar(listState, insets = contentPadding)
     }
 
     if (onLoadMore != null && state is UiState.Success) {

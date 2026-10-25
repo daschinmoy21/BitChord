@@ -56,6 +56,7 @@ import com.music.bitchord.ui.icons.BitChordIcons
 import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.PageScrollbar
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.libraryGrid
@@ -242,6 +243,7 @@ fun LibraryScreen(
                 }
             }
         }
+        PageScrollbar(listState, insets = contentPadding)
     }
 }
 
@@ -459,6 +461,7 @@ fun LibraryGridPage(
                 )
             }
         }
+        PageScrollbar(gridState, insets = contentPadding)
     }
 }
 

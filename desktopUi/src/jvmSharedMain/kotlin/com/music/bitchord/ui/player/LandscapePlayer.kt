@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.draw.alpha
@@ -127,14 +129,18 @@ private val LandscapeArtShape = RoundedCornerShape(LANDSCAPE_ART_CORNER)
 private val LANDSCAPE_HANDLE_STRIP = 24.dp
 
 /**
- * How much of the desktop left column the transport and the toggle row take.
+ * About how much of the desktop left column the transport and the toggle row
+ * take: the first frame's guess, before they have been measured.
  *
- * The sleeve is sized to leave this much under it, so the controls sit close
+ * The sleeve is sized to leave the controls' height under it, so they sit close
  * beneath the cover instead of the sleeve being centred in the whole column and
  * shunting them down to its foot. Only the desktop window uses it; a
  * phone-height window keeps the sleeve filling the column above its row.
  */
-private val LANDSCAPE_DESKTOP_CONTROLS_RESERVE = 300.dp
+private val LANDSCAPE_DESKTOP_CONTROLS_RESERVE = 470.dp
+
+/** The narrowest the desktop sleeve's controls get, however short the window. */
+private val LANDSCAPE_DESKTOP_CONTROLS_MIN_WIDTH = 340.dp
 
 /**
  * The player in a landscape window — a tablet, or a phone on its side. See
@@ -165,7 +171,7 @@ internal fun LandscapePlayerLayout(
      * aura should be clipped to the sleeve's rounded shape (desktop) rather than its square bounds. */
     artwork: @Composable (Modifier, glowRounded: Boolean) -> Unit,
     /** The row under the sleeve, emitted into its column. */
-    actions: @Composable () -> Unit,
+    actions: @Composable (compact: Boolean) -> Unit,
     /**
      * Credits, scrubber, transport and volume. On a desktop window this sits
      * directly under the sleeve in the left column and is always visible, so
@@ -232,32 +238,50 @@ internal fun LandscapePlayerLayout(
                             artwork(Modifier.size(minOf(maxWidth, maxHeight)), false)
                         }
                         Spacer(Modifier.height(12.dp))
-                        actions()
+                        actions(true)
                     } else {
                         // On a desktop window the transport lives here, right
                         // under the sleeve and always on screen, the way Apple
-                        // Music lays the fullscreen player out. The sleeve is
-                        // capped to [LANDSCAPE_DESKTOP_CONTROLS_RESERVE] less
-                        // than the column so there is room under it, and the box
-                        // wraps that square exactly — no slack left below the
-                        // cover to shove the controls back down to the foot.
+                        // Music lays the fullscreen player out. Sleeve and
+                        // controls share one width, so the cover's edges are the
+                        // title's and the scrubber's. The sleeve takes what the
+                        // column's height leaves once the controls under it have
+                        // theirs — measured, starting from
+                        // [LANDSCAPE_DESKTOP_CONTROLS_RESERVE] until they are.
+                        val density = LocalDensity.current
+                        var belowSleeve by remember { mutableStateOf(LANDSCAPE_DESKTOP_CONTROLS_RESERVE) }
                         BoxWithConstraints(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            artwork(
-                                Modifier.size(
-                                    minOf(maxWidth, maxHeight - LANDSCAPE_DESKTOP_CONTROLS_RESERVE),
+                            val side = minOf(maxWidth, PLAYER_MAX_WIDTH, maxHeight - belowSleeve)
+                                .coerceAtLeast(0.dp)
+                            Column(
+                                // Never so narrow the transport crowds: below this
+                                // a short window shrinks only the cover.
+                                modifier = Modifier.width(
+                                    side.coerceAtLeast(LANDSCAPE_DESKTOP_CONTROLS_MIN_WIDTH)
+                                        .coerceAtMost(maxWidth),
                                 ),
-                                true,
-                            )
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                artwork(Modifier.size(side), true)
+                                Column(
+                                    Modifier.fillMaxWidth().onSizeChanged {
+                                        belowSleeve = with(density) { it.height.toDp() }
+                                    },
+                                ) {
+                                    Spacer(Modifier.height(24.dp))
+                                    controls(false)
+                                    // The lyrics / output / queue row under the
+                                    // transport, where it sat before the redesign:
+                                    // switching the right column is one click, not
+                                    // a trip through the song menu.
+                                    Spacer(Modifier.height(20.dp))
+                                    actions(false)
+                                }
+                            }
                         }
-                        Spacer(Modifier.height(24.dp))
-                        controls(false)
-                        // The volume bar and the lyrics/output/queue row are
-                        // folded into the player's overflow, which the song
-                        // menu's "More…" opens — so the sleeve and the
-                        // transport are all this column shows.
                     }
                 }
 

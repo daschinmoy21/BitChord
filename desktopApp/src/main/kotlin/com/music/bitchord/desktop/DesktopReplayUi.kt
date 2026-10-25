@@ -1,5 +1,7 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.ui.components.PageScrollbar
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.music.bitchord.ui.replay.ReplayCreditCard
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -83,8 +85,9 @@ internal fun DesktopReplayPage(
     contentPadding: PaddingValues,
 ) {
     // The mesh behind this page is painted by the frame, so the chrome is tinted by it too.
+    val listState = rememberLazyListState()
     Box(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = contentPadding) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = contentPadding) {
             item("heading") {
                 // No arrow of its own: the top bar's back is the way out, as the gesture is on
                 // Android.
@@ -159,6 +162,7 @@ internal fun DesktopReplayPage(
             item("habits") { Habits(summary) }
             item("tail") { Spacer(Modifier.height(32.dp)) }
         }
+        PageScrollbar(listState, insets = contentPadding)
     }
 }
 

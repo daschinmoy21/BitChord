@@ -587,6 +587,12 @@ internal fun PlayerActionRow(
      * and keeps only the middle pill; every other caller shows all three.
      */
     showLyricsAndQueue: Boolean = true,
+    /**
+     * Whether the middle capsule holds its place when the queue swaps it for the
+     * playback modes, rather than sliding over to where the lyrics glyph was. The
+     * desktop player keeps it centred, the lyrics glyph staying as the way back.
+     */
+    pillStaysCentred: Boolean = false,
 ) {
     if (!showLyricsAndQueue) {
         // The desktop overflow: with no lyrics or queue glyph there is nothing to
@@ -623,7 +629,7 @@ internal fun PlayerActionRow(
         // over to where the lyrics glyph sits. Read only while placing, so the
         // slide relays out the row and recomposes nothing.
         val toStart = animateFloatAsState(
-            targetValue = if (queueOpen) 1f else 0f,
+            targetValue = if (queueOpen && !pillStaysCentred) 1f else 0f,
             animationSpec = tween(PILL_SLIDE_MS, easing = FastOutSlowInEasing),
             label = "playerBottomPillSlide",
         )
@@ -632,9 +638,10 @@ internal fun PlayerActionRow(
             contentAlignment = Alignment.CenterStart,
         ) {
             // Gone while the queue is up: the playback modes take its place, and
-            // the queue glyph, lit, is how you get back.
+            // the queue glyph, lit, is how you get back. Kept where the capsule
+            // stays centred, since nothing moves over it there.
             AnimatedVisibility(
-                visible = !queueOpen,
+                visible = pillStaysCentred || !queueOpen,
                 enter = fadeIn(tween(180, delayMillis = 120)),
                 exit = fadeOut(tween(120)),
                 modifier = Modifier.align(Alignment.CenterStart),

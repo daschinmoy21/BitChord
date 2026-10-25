@@ -2034,7 +2034,31 @@ fun NowPlayingScreen(
                             )
                         }
                     },
-                    actions = playerActions,
+                    actions = { compact ->
+                        if (compact) {
+                            playerActions()
+                        } else {
+                            // On a desktop window the right column shows the lyrics
+                            // whenever the queue is not up, so that is when the lyrics
+                            // glyph reads as on; pressing it puts the queue away.
+                            PlayerActionRow(
+                                lyricsOpen = !queueOpen,
+                                queueOpen = queueOpen,
+                                shuffleEnabled = shuffleEnabled,
+                                repeatMode = repeatMode,
+                                autoplayEnabled = autoplayEnabled,
+                                onToggleLyrics = { if (queueOpen) toggleQueue() },
+                                onToggleQueue = toggleQueue,
+                                onToggleShuffle = onToggleShuffle,
+                                onCycleRepeat = onCycleRepeat,
+                                onToggleAutoplay = onToggleAutoplay,
+                                onOpenOutput = openAudioOutput,
+                                onListenTogether = onListenTogether,
+                                onOpenListenTogetherMembers = openListenTogetherMembers,
+                                pillStaysCentred = true,
+                            )
+                        }
+                    },
                     controls = { compact ->
                         LandscapeMainPane(
                             compact = compact,
@@ -2114,7 +2138,7 @@ fun NowPlayingScreen(
                                     compact = compact,
                                 )
                             },
-                            volume = if (hideVolumeBar || !compact) {
+                            volume = if (hideVolumeBar) {
                                 null
                             } else {
                                 {
