@@ -223,6 +223,10 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
     playTrack(track.artists.length || !fallbackArtists ? track : { ...track, artists: fallbackArtists }, fallbackArtwork);
   };
   const container = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const nearEndCallback = useRef(onNearEnd);
+  useEffect(() => { nearEndCallback.current = onNearEnd; }, [onNearEnd]);
+  const canLoadMore = Boolean(onNearEnd);
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   useEffect(() => setScrollElement(document.getElementById('scrollable-page')), []);
   const virtual = tracks.length >= VIRTUALIZE_FROM;
@@ -238,9 +242,16 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
   const items = virtual ? virtualizer.getVirtualItems() : [];
   const last = items[items.length - 1];
   useEffect(() => {
-    if (!onNearEnd) return;
-    if (virtual ? last && last.index >= tracks.length - 20 : true) onNearEnd();
-  }, [last?.index, tracks.length, virtual, onNearEnd]);
+    if (virtual && last && last.index >= tracks.length - 20) nearEndCallback.current?.();
+  }, [last?.index, tracks.length, virtual, canLoadMore]);
+  useEffect(() => {
+    if (virtual || !canLoadMore || !end.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) nearEndCallback.current?.();
+    }, { root: scrollElement, rootMargin: '600px 0px' });
+    observer.observe(end.current);
+    return () => observer.disconnect();
+  }, [virtual, canLoadMore, scrollElement, tracks.length]);
 
   return (
     <div className="mx-(--body-gutter) type-callout text-secondary" data-variant={variant} role="table" aria-label="Songs">
@@ -282,6 +293,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
           ))
         )}
       </div>
+      {!virtual && canLoadMore && <div ref={end} className="h-px" aria-hidden="true" />}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Navigate, useParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { AlbumLibrary } from '@/components/music/AlbumLibrary';
@@ -33,11 +33,11 @@ export default function LibraryPage() {
   const auth = useYtAuth();
   const signedIn = useSignedIn();
   const library = useLibrary(isLibrarySection(section) ? section : 'playlists');
-  const loadMore = useLoadMore(
-    library.hasNextPage && !library.isFetchingNextPage && !library.isFetchNextPageError
-      ? () => void library.fetchNextPage({ cancelRefetch: false })
-      : null,
-  );
+  const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } = library;
+  const fetchMore = useCallback(() => {
+    if (hasNextPage && !isFetching && !isFetchNextPageError) void fetchNextPage({ cancelRefetch: false });
+  }, [hasNextPage, isFetching, isFetchNextPageError, fetchNextPage]);
+  const loadMore = useLoadMore(hasNextPage && !isFetching && !isFetchNextPageError ? fetchMore : null);
 
   if (!isLibrarySection(section)) return <Navigate to="/home" replace />;
   const title = LIBRARY_SECTIONS[section].title;
@@ -67,7 +67,7 @@ export default function LibraryPage() {
           hasNextPage={library.hasNextPage}
           fetching={library.isFetching}
           loadMoreFailed={library.isFetchNextPageError}
-          onLoadMore={() => void library.fetchNextPage({ cancelRefetch: false })}
+          onLoadMore={fetchMore}
         />
       )}
       {section !== 'albums' && !grid.length && !tracks.length && <EmptyState title="Nothing here yet" />}
@@ -92,11 +92,7 @@ export default function LibraryPage() {
             tracks={tracks}
             variant="playlist"
             source={{ title, type: 'library', id: section }}
-            onNearEnd={
-              library.hasNextPage && !library.isFetchingNextPage && !library.isFetchNextPageError
-                ? () => void library.fetchNextPage()
-                : undefined
-            }
+            onNearEnd={hasNextPage && !isFetchNextPageError ? fetchMore : undefined}
           />
         </div>
       )}

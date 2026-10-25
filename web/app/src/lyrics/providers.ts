@@ -556,12 +556,11 @@ export async function lrclib(q: LyricsQuery): Promise<Parsed | null> {
 
 const MXM = 'https://apic.musixmatch.com/ws/1.1';
 const MXM_APP = 'mobile-app-v1.0';
-const MXM_FALLBACK_SECRET = 'f09016176ba43a1cfd1031fbd6b3d26c';
 const mxmGuid = crypto.randomUUID();
 let mxmSecret: string | null = null;
 let mxmToken: string | null = null;
 
-async function musixmatchSecret(): Promise<string> {
+async function musixmatchSecret(): Promise<string | null> {
   if (mxmSecret) return mxmSecret;
   const ext = { route: 'extension' as const };
   try {
@@ -570,9 +569,9 @@ async function musixmatchSecret(): Promise<string> {
     const source = script ? await lyricsGet(new URL(script, 'https://www.musixmatch.com/search').toString(), ext) : null;
     const encoded = source?.match(/from\(\s*["']([^"']+)["']\s*\.split/)?.[1];
     const decoded = encoded ? atob([...encoded].reverse().join('')) : '';
-    mxmSecret = decoded.trim() || MXM_FALLBACK_SECRET;
+    mxmSecret = decoded.trim() || null;
   } catch {
-    mxmSecret = MXM_FALLBACK_SECRET;
+    mxmSecret = null;
   }
   return mxmSecret;
 }
@@ -591,6 +590,7 @@ async function mxmSign(url: string, secret: string): Promise<string> {
 async function mxmGet(build: (token: string) => string): Promise<Obj | null> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const secret = await musixmatchSecret();
+    if (!secret) return null;
     if (!mxmToken) {
       const body = json<{ message?: { body?: { user_token?: string } } }>(
         await lyricsGet(await mxmSign(urlWith(`${MXM}/token.get`, { app_id: MXM_APP, guid: mxmGuid, format: 'json' }), secret), { route: 'extension' }),
@@ -648,10 +648,15 @@ export async function musixmatch(q: LyricsQuery): Promise<Parsed | null> {
   type Track = { track_id: number; track_name: string; artist_name?: string; track_length?: number; has_subtitles?: number; has_richsync?: number };
   const tracks = ((search?.track_list as { track: Track }[] | undefined) ?? []).map((t) => t.track);
   const score = (t: Track) => {
-    const name = t.track_name.trim().toLowerCase();
-    const want = q.title.trim().toLowerCase();
-    let s = name === want ? 80 : name.includes(want) || want.includes(name) ? 40 : 0;
-    if ((t.artist_name ?? '').toLowerCase().includes(q.artist.toLowerCase())) s += 40;
+    const name = normalized(t.track_name);
+    const want = normalized(q.title);
+    const artist = normalized(t.artist_name ?? '');
+    const wantedArtist = normalized(q.artist);
+    const titleMatch = !!name && !!want && (name === want || name.includes(want) || want.includes(name));
+    const artistMatch = !!artist && !!wantedArtist && artist.includes(wantedArtist);
+    if (!titleMatch && !artistMatch) return 0;
+    let s = titleMatch ? (name === want ? 80 : 40) : 0;
+    if (artistMatch) s += 40;
     if (t.track_length != null) {
       const diff = Math.abs(t.track_length - secs);
       s += diff <= 2 ? 30 : diff <= 5 ? 15 : diff <= 10 ? 5 : -20;
@@ -659,7 +664,7 @@ export async function musixmatch(q: LyricsQuery): Promise<Parsed | null> {
     return s;
   };
   const track = tracks.sort((a, b) => score(b) - score(a))[0];
-  if (!track) return null;
+  if (!track || score(track) <= 0) return null;
   if (track.has_richsync) {
     const rich = await mxmGet((token) => urlWith(`${MXM}/track.richsync.get`, { app_id: MXM_APP, format: 'json', track_id: track.track_id, usertoken: token }));
     const body = (rich?.richsync as { richsync_body?: string } | undefined)?.richsync_body;

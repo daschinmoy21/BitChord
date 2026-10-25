@@ -18,10 +18,10 @@ export default function PlaylistPage() {
   const header = playlist.data?.pages[0]?.header ?? null;
   usePageTint(useArtworkColor(header?.thumbnail));
 
-  const { hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = playlist;
+  const { hasNextPage, isFetching, isFetchingNextPage, isFetchNextPageError, fetchNextPage } = playlist;
   const onNearEnd = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage && !isFetchNextPageError) void fetchNextPage();
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+    if (hasNextPage && !isFetching && !isFetchNextPageError) void fetchNextPage({ cancelRefetch: false });
+  }, [hasNextPage, isFetching, isFetchNextPageError, fetchNextPage]);
 
   if (missing) return <NeedsExtension />;
   if (playlist.isError && !playlist.data) return <LoadError error={playlist.error} onRetry={() => void playlist.refetch()} />;
@@ -37,7 +37,7 @@ export default function PlaylistPage() {
         onPlay={() => playList(tracks, 0, context)}
         onShuffle={() => shuffleList(tracks, context)}
       />
-      <TrackList tracks={tracks} variant="playlist" onNearEnd={onNearEnd} source={context.source} />
+      <TrackList tracks={tracks} variant="playlist" onNearEnd={hasNextPage && !isFetchNextPageError ? onNearEnd : undefined} source={context.source} />
       {isFetchingNextPage && <div className="flex justify-center py-5 type-callout text-secondary">Loading more songs…</div>}
       {playlist.isFetchNextPageError && <LoadMoreError onRetry={() => void fetchNextPage()} />}
       <footer className={detailFooter}>
