@@ -266,6 +266,41 @@
 }
 
 /*
+ * A scrollbar that's always there to drag, with a mouse: overlay scrollbars
+ * (macOS, Windows 11) hide until the page scrolls. Touch keeps the native one.
+ * Chrome and Safari draw the ::-webkit-scrollbar parts; Firefox, which has
+ * none, the standard properties (Chrome ignores these parts once they're set).
+ */
+@utility scrollbar-visible {
+  @media (hover: hover) and (pointer: fine) {
+    &::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background-color: color-mix(in srgb, var(--systemPrimary) 25%, transparent);
+      background-clip: content-box;
+      border: 3px solid transparent;
+      border-radius: 1000px;
+    }
+
+    &::-webkit-scrollbar-thumb:hover,
+    &::-webkit-scrollbar-thumb:active {
+      background-color: color-mix(in srgb, var(--systemPrimary) 45%, transparent);
+    }
+
+    @supports not selector(::-webkit-scrollbar) {
+      scrollbar-color: color-mix(in srgb, var(--systemPrimary) 30%, transparent) transparent;
+    }
+  }
+}
+
+/*
  * Grouped settings rows: a hairline between two rows of the same kind, inset
  * from the left by the value (to the text, past an icon).
  */

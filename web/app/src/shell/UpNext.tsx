@@ -189,7 +189,7 @@ export function UpNext() {
           </p>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[120px] [scrollbar-width:thin]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[120px] scrollbar-visible">
           <ol className={list}>{rows(beforeAutoplay)}</ol>
           {afterAutoplay.length > 0 && (
             <>

@@ -80,7 +80,7 @@ export function AppShell() {
         {/* The page scrolls under the fixed sidebar and the floating player. */}
         <main
           id="scrollable-page"
-          className="absolute inset-0 overflow-x-hidden overflow-y-auto pl-(--web-navigation-width) [scrollbar-gutter:stable] data-tint:bg-(--page-tint) data-tint:transition-[background-color] data-tint:duration-300 data-tint:ease-in max-sm:pt-(--mobile-top-bar-height) max-sm:pl-0"
+          className="absolute inset-0 overflow-x-hidden overflow-y-auto pl-(--web-navigation-width) scrollbar-visible [scrollbar-gutter:stable] data-tint:bg-(--page-tint) data-tint:transition-[background-color] data-tint:duration-300 data-tint:ease-in max-sm:pt-(--mobile-top-bar-height) max-sm:pl-0"
         >
           {/* Clears the floating pill: its height, its offset, and some air. */}
           <div className="min-h-full pb-[calc(var(--player-pill-height)+var(--player-bottom-offset)+40px)]">
