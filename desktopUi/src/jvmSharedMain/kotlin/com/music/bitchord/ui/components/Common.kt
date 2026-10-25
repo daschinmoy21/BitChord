@@ -56,6 +56,7 @@ import com.music.bitchord.ui.haptics.rememberHaptics
 import kotlin.math.abs
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -769,7 +770,7 @@ fun PullToRefresh(
     onRefresh: () -> Unit,
     state: PullToRefreshState,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable BoxScope.() -> Unit,
 ) {
     if (!LocalPullToRefreshEnabled.current) {
         Box(modifier.fillMaxSize()) { content() }

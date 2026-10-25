@@ -50,6 +50,7 @@ import com.music.bitchord.data.model.ShelfItem
 import com.music.bitchord.data.model.UiState
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.PageScrollbar
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.ShimmerBox
 import com.music.bitchord.ui.components.feedSkeleton
@@ -116,6 +117,7 @@ fun ExploreScreen(
                     }
                 }
             }
+            PageScrollbar(listState, insets = contentPadding)
         }
     }
 }
@@ -316,29 +318,32 @@ fun MoodGenrePlaylistsScreen(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(
-        state = listState,
-        contentPadding = contentPadding,
-        modifier = modifier.fillMaxSize(),
-    ) {
-        item {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
-            )
-        }
-        when (state) {
-            UiState.Loading -> feedSkeleton()
-            is UiState.Error -> item {
-                MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+    Box(modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            contentPadding = contentPadding,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            item {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.displayLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                )
             }
-            is UiState.Success -> items(state.data, key = { it.title }) { shelf ->
-                Shelf(shelf = shelf, onItemClick = onItemClick)
+            when (state) {
+                UiState.Loading -> feedSkeleton()
+                is UiState.Error -> item {
+                    MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
+                }
+                is UiState.Success -> items(state.data, key = { it.title }) { shelf ->
+                    Shelf(shelf = shelf, onItemClick = onItemClick)
+                }
             }
         }
+        PageScrollbar(listState, insets = contentPadding)
     }
 }

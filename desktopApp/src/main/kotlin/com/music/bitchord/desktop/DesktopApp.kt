@@ -19,6 +19,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.mutableStateListOf
 import com.music.bitchord.ui.components.PAGE_GUTTER
+import com.music.bitchord.ui.components.PageScrollbar
 import com.music.bitchord.ui.components.SourceQualityBadge
 import com.music.bitchord.ui.components.sourceQualityBadge
 import com.music.bitchord.ui.components.contextClick
@@ -113,6 +114,7 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
@@ -5562,8 +5564,10 @@ private fun DesktopArtistPage(
                 // Android caps the top-songs block and pages it sideways so the release shelves are
                 // not buried under a hundred rows.
                 val top = artist.songs.take(MAX_ARTIST_SONGS)
+                val listState = rememberLazyListState()
                 Box(Modifier.fillMaxSize()) {
                     LazyColumn(
+                        state = listState,
                         contentPadding = pagePadding(bottom = 32.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -5676,6 +5680,7 @@ private fun DesktopArtistPage(
                             }
                         }
                     }
+                    DesktopPageScrollbar(listState)
                 }
             }
         }
@@ -5810,7 +5815,9 @@ private fun DesktopHistoryPage(
 ) {
     DesktopPageScaffold(contentPadding) {
         val isCurrentRow = rememberPlayingRowMatcher(history)
+        val listState = rememberLazyListState()
         LazyColumn(
+            state = listState,
             contentPadding = pagePadding(start = DesktopPageGutter, end = DesktopPageGutter, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -5835,6 +5842,7 @@ private fun DesktopHistoryPage(
                 )
             }
         }
+        DesktopPageScrollbar(listState)
     }
 }
 
@@ -5979,40 +5987,50 @@ private fun DesktopLibrarySongContent(
     if (songs.isEmpty()) {
         DesktopEmptyPage(BitChordIcons.Search, "No matching music", "Try a different search.")
     } else if (view == DesktopLibraryView.GRID) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 150.dp),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = pagePadding(bottom = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            gridItems(songs, key = Song::videoId) { song ->
-                Column(Modifier.fillMaxWidth().clickable { onSongClick(song) }) {
-                    DesktopArtwork(song.thumbnailUrl, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp)))
-                    Spacer(Modifier.height(7.dp))
-                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
-                    Text(song.artist, color = DesktopSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val gridState = rememberLazyGridState()
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Adaptive(minSize = 150.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = pagePadding(bottom = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                gridItems(songs, key = Song::videoId) { song ->
+                    Column(Modifier.fillMaxWidth().clickable { onSongClick(song) }) {
+                        DesktopArtwork(song.thumbnailUrl, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp)))
+                        Spacer(Modifier.height(7.dp))
+                        Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                        Text(song.artist, color = DesktopSecondary, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
+            DesktopPageScrollbar(gridState)
         }
     } else {
         val isCurrentRow = rememberPlayingRowMatcher(songs)
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = pagePadding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(songs, key = Song::videoId) { song ->
-                DesktopSongRow(
-                    song,
-                    isCurrent = isCurrentRow(song),
-                    liked = false,
-                    onClick = onSongClick,
-                    onToggleLike = null,
-                    downloaded = song.localPath != null,
-                    menu = menu,
-                )
+        val listState = rememberLazyListState()
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = pagePadding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(songs, key = Song::videoId) { song ->
+                    DesktopSongRow(
+                        song,
+                        isCurrent = isCurrentRow(song),
+                        liked = false,
+                        onClick = onSongClick,
+                        onToggleLike = null,
+                        downloaded = song.localPath != null,
+                        menu = menu,
+                    )
+                }
             }
+            DesktopPageScrollbar(listState)
         }
     }
 }
@@ -6026,42 +6044,52 @@ private fun DesktopLibraryGroupingContent(
     if (groups.isEmpty()) {
         DesktopEmptyPage(BitChordIcons.Search, "Nothing here yet", "Music will be grouped as it is added.")
     } else if (view == DesktopLibraryView.GRID) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 150.dp),
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = pagePadding(bottom = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            gridItems(groups, key = { it.key }) { group ->
-                Column(Modifier.fillMaxWidth().clickable { onGroupClick(group.key to group.value) }) {
-                    DesktopArtwork(group.value.firstOrNull()?.thumbnailUrl, Modifier.fillMaxWidth().height(150.dp).clip(CircleShape))
-                    Spacer(Modifier.height(7.dp))
-                    Text(group.key, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
-                    Text("${group.value.size} songs", color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = pagePadding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(groups, key = { it.key }) { group ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { onGroupClick(group.key to group.value) }.padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DesktopArtwork(group.value.firstOrNull()?.thumbnailUrl, Modifier.size(54.dp).clip(CircleShape))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
+        val gridState = rememberLazyGridState()
+        Box(Modifier.fillMaxSize()) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Adaptive(minSize = 150.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = pagePadding(bottom = 32.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                gridItems(groups, key = { it.key }) { group ->
+                    Column(Modifier.fillMaxWidth().clickable { onGroupClick(group.key to group.value) }) {
+                        DesktopArtwork(group.value.firstOrNull()?.thumbnailUrl, Modifier.fillMaxWidth().height(150.dp).clip(CircleShape))
+                        Spacer(Modifier.height(7.dp))
                         Text(group.key, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
                         Text("${group.value.size} songs", color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
                     }
-                    Icon(BitChordIcons.Play, DesktopStrings["open", "Open"], tint = DesktopSecondary)
                 }
             }
+            DesktopPageScrollbar(gridState)
+        }
+    } else {
+        val listState = rememberLazyListState()
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = pagePadding(bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(groups, key = { it.key }) { group ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { onGroupClick(group.key to group.value) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DesktopArtwork(group.value.firstOrNull()?.thumbnailUrl, Modifier.size(54.dp).clip(CircleShape))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(group.key, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                            Text("${group.value.size} songs", color = DesktopSecondary, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(BitChordIcons.Play, DesktopStrings["open", "Open"], tint = DesktopSecondary)
+                    }
+                }
+            }
+            DesktopPageScrollbar(listState)
         }
     }
 }
@@ -6210,8 +6238,9 @@ private fun DesktopSettingsScreen(
                     )
                 }
                 CompositionLocalProvider(LocalSettingsQuery provides settingsQuery.trim()) {
+                Box(Modifier.weight(1f)) {
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     state = listState,
                     contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp),
                 ) {
@@ -6878,6 +6907,8 @@ private fun DesktopSettingsScreen(
                 DesktopSettingsFooter(onLicenses = onOpenLicenses)
             }
         }
+                DesktopPageScrollbar(listState)
+                }
         }
             }
     }
@@ -6968,42 +6999,47 @@ private fun DesktopLicensesPage(onDismiss: () -> Unit) {
             color = DesktopSecondary,
             style = MaterialTheme.typography.bodySmall,
         )
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            DesktopLicenses.groups.forEach { group ->
-                item(key = group.title) {
-                    SettingsGroup(group.title) {
-                        group.entries.forEach { entry ->
-                            Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(entry.name, fontWeight = FontWeight.Medium)
-                                    Spacer(Modifier.width(10.dp))
+        val listState = rememberLazyListState()
+        Box(Modifier.weight(1f)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                DesktopLicenses.groups.forEach { group ->
+                    item(key = group.title) {
+                        SettingsGroup(group.title) {
+                            group.entries.forEach { entry ->
+                                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(entry.name, fontWeight = FontWeight.Medium)
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            entry.license,
+                                            color = DesktopAccent,
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    }
+                                    if (entry.note.isNotBlank()) {
+                                        Text(
+                                            entry.note,
+                                            color = DesktopSecondary,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
                                     Text(
-                                        entry.license,
-                                        color = DesktopAccent,
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                }
-                                if (entry.note.isNotBlank()) {
-                                    Text(
-                                        entry.note,
-                                        color = DesktopSecondary,
+                                        entry.url,
+                                        color = DesktopSecondary.copy(alpha = 0.7f),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
-                                Text(
-                                    entry.url,
-                                    color = DesktopSecondary.copy(alpha = 0.7f),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
                             }
                         }
                     }
                 }
             }
+            DesktopPageScrollbar(listState)
         }
         Row(
             Modifier.fillMaxWidth().padding(vertical = 18.dp),
@@ -7331,7 +7367,9 @@ private fun DesktopCollectionPage(
     }.joinToString(" • ").uppercase()
     DesktopPageScaffold(contentPadding) {
         val isCurrentRow = rememberPlayingRowMatcher(songs)
+        val listState = rememberLazyListState()
         LazyColumn(
+            state = listState,
             contentPadding = pagePadding(
                 start = DesktopPageGutter,
                 top = DesktopPageGutter,
@@ -7546,6 +7584,7 @@ private fun DesktopCollectionPage(
                 }
             }
         }
+        DesktopPageScrollbar(listState)
     }
 }
 
@@ -8130,7 +8169,7 @@ private fun DesktopSongRow(
 
 /** A page's box, inset from the shell's chrome. */
 @Composable
-private fun DesktopPageScaffold(contentPadding: PaddingValues, content: @Composable () -> Unit) {
+private fun DesktopPageScaffold(contentPadding: PaddingValues, content: @Composable BoxScope.() -> Unit) {
     val direction = LocalLayoutDirection.current
     Box(
         Modifier.fillMaxSize().padding(
@@ -8160,6 +8199,15 @@ private fun pagePadding(
     end = end,
     bottom = bottom + LocalDesktopBottomInset.current,
 )
+
+/** A page's [PageScrollbar], its track ending above whatever floats over the page. */
+@Composable
+private fun BoxScope.DesktopPageScrollbar(state: LazyListState) =
+    PageScrollbar(state, insets = PaddingValues(bottom = LocalDesktopBottomInset.current))
+
+@Composable
+private fun BoxScope.DesktopPageScrollbar(state: LazyGridState) =
+    PageScrollbar(state, insets = PaddingValues(bottom = LocalDesktopBottomInset.current))
 
 @Composable
 private fun SectionTitle(

@@ -2,6 +2,7 @@ package com.music.bitchord.ui.player
 
 import com.music.bitchord.sharedui.resources.*
 import com.music.bitchord.ui.components.ExplicitSongTitle
+import com.music.bitchord.ui.components.PageScrollbar
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -399,6 +400,7 @@ internal fun InlineQueue(
                     }
                 }
             }
+            PageScrollbar(listState, ink = Color.White)
             // The held row, drawn over the list where the finger is. Positioned
             // from the finger alone, so nothing the list does underneath — a
             // swap, a relayout, a scroll — can move it.

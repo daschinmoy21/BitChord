@@ -1,5 +1,7 @@
 package com.music.bitchord.desktop
 
+import com.music.bitchord.ui.components.PageScrollbar
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -155,39 +157,43 @@ internal fun DesktopSpotifyPage(
         }
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
-        item {
-            Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(selected?.name ?: "Spotify", style = MaterialTheme.typography.headlineMedium)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (selected != null) TextButton(onClick = { selected = null; progress = "" }, enabled = !resolving) { Text("Back to playlists") }
-                    TextButton(onClick = onConnect, enabled = !resolving) { Text(if (connected) "Manage account" else "Add account") }
-                    if (connected) TextButton(onClick = { refresh++ }, enabled = !loading && !resolving) { Text("Refresh") }
+    val listState = rememberLazyListState()
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), state = listState, contentPadding = contentPadding) {
+            item {
+                Column(Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(selected?.name ?: "Spotify", style = MaterialTheme.typography.headlineMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (selected != null) TextButton(onClick = { selected = null; progress = "" }, enabled = !resolving) { Text("Back to playlists") }
+                        TextButton(onClick = onConnect, enabled = !resolving) { Text(if (connected) "Manage account" else "Add account") }
+                        if (connected) TextButton(onClick = { refresh++ }, enabled = !loading && !resolving) { Text("Refresh") }
+                    }
+                    if (!connected) Text("Sign in to browse your playlists and Liked Songs, or import a public playlist below.", color = DesktopSecondary)
+                    if (selected == null) Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("Spotify playlist link") },
+                            singleLine = true, enabled = !resolving, modifier = Modifier.weight(1f))
+                        TextButton(onClick = ::importLink, enabled = !resolving && link.isNotBlank()) { Text("Import") }
+                    } else Row {
+                        TextButton(onClick = { resolve(false) }, enabled = !loading && !resolving && tracks.isNotEmpty()) { Text("Play all") }
+                        TextButton(onClick = { resolve(true) }, enabled = !loading && !resolving && tracks.isNotEmpty()) { Text("Import to local playlists") }
+                        Text("${tracks.size} songs", modifier = Modifier.padding(12.dp), color = DesktopSecondary)
+                    }
+                    if (loading || resolving) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = DesktopAccent)
+                    if (resolving) TextButton(onClick = { actionJob?.cancel() }) { Text("Cancel matching") }
+                    if (progress.isNotBlank()) Text(progress, color = DesktopSecondary)
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (connected && !loading && error == null && selected != null && tracks.isEmpty()) Text("This playlist has no tracks.", color = DesktopSecondary)
                 }
-                if (!connected) Text("Sign in to browse your playlists and Liked Songs, or import a public playlist below.", color = DesktopSecondary)
-                if (selected == null) Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(value = link, onValueChange = { link = it }, label = { Text("Spotify playlist link") },
-                        singleLine = true, enabled = !resolving, modifier = Modifier.weight(1f))
-                    TextButton(onClick = ::importLink, enabled = !resolving && link.isNotBlank()) { Text("Import") }
-                } else Row {
-                    TextButton(onClick = { resolve(false) }, enabled = !loading && !resolving && tracks.isNotEmpty()) { Text("Play all") }
-                    TextButton(onClick = { resolve(true) }, enabled = !loading && !resolving && tracks.isNotEmpty()) { Text("Import to local playlists") }
-                    Text("${tracks.size} songs", modifier = Modifier.padding(12.dp), color = DesktopSecondary)
+            }
+            if (selected == null) items(playlists, key = { it.id }) { playlist ->
+                SpotifyRow(playlist.name, playlist.owner ?: "Spotify", playlist.imageUrl, !resolving) {
+                    selected = playlist; progress = ""
                 }
-                if (loading || resolving) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = DesktopAccent)
-                if (resolving) TextButton(onClick = { actionJob?.cancel() }) { Text("Cancel matching") }
-                if (progress.isNotBlank()) Text(progress, color = DesktopSecondary)
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (connected && !loading && error == null && selected != null && tracks.isEmpty()) Text("This playlist has no tracks.", color = DesktopSecondary)
+            } else items(tracks.withIndex().toList(), key = { "${it.index}:${it.value.id}" }) { (_, track) ->
+                SpotifyRow(track.title, track.artist, track.imageUrl, !loading && !resolving) { resolve(false, track) }
             }
         }
-        if (selected == null) items(playlists, key = { it.id }) { playlist ->
-            SpotifyRow(playlist.name, playlist.owner ?: "Spotify", playlist.imageUrl, !resolving) {
-                selected = playlist; progress = ""
-            }
-        } else items(tracks.withIndex().toList(), key = { "${it.index}:${it.value.id}" }) { (_, track) ->
-            SpotifyRow(track.title, track.artist, track.imageUrl, !loading && !resolving) { resolve(false, track) }
-        }
+        PageScrollbar(listState, insets = contentPadding)
     }
 }
 
