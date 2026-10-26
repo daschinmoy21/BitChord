@@ -234,33 +234,15 @@ val LIBRARY_GRID_SPACING = 12.dp
 
 private const val LIBRARY_GRID_MIN_COLUMNS = 2
 
-/** Library shelves never grow past this many across, however wide the screen. */
-private const val LIBRARY_GRID_MAX_COLUMNS = 5
-
 /**
- * How a Library shelf's full "Show all" page lays out as a grid, in
- * [available] dp of row — see `LibraryGridPage`.
- *
- * Columns follow from [LIBRARY_GRID_MIN_CARD_WIDTH] — as many as fit — rather
- * than from a fixed count, so a phone settles on 2 and a tablet fills out
- * towards the 5-column ceiling. This is the same arithmetic `GridCells.Adaptive`
- * runs, at the same minimum, gutter and spacing the Local Music and Downloads
- * grids use, which is what keeps a card here the size of a card there. Every
- * width is already in dp, which is what
- * makes this "based on device width and dpi" rather than a raw pixel count: a
- * dp reads the same physical size on a 420ppi phone as on a 160ppi tablet, so
- * the column count tracks how much room there actually is rather than how
- * many pixels the panel happens to report.
- *
- * The shelf's own preview row on the Library page itself is unrelated — it
- * keeps the fixed [SHELF_CARD_WIDTH] every other shelf uses and a flat
- * five-card cap rather than a width-derived one, so a card is the same size
- * whether the row it's in scrolls or not. See `LibraryGridShelf`.
+ * Size Library preview rows and full grids from the actual content width.
+ * Keep covers near their normal size and add columns as a desktop window
+ * grows, so a wide window does not stop at five covers or stretch them huge.
  */
 fun libraryGrid(available: Dp): LibraryGridSpec {
     val raw = ((available + LIBRARY_GRID_SPACING) / (LIBRARY_GRID_MIN_CARD_WIDTH + LIBRARY_GRID_SPACING))
         .toInt()
-    val columns = raw.coerceIn(LIBRARY_GRID_MIN_COLUMNS, LIBRARY_GRID_MAX_COLUMNS)
+    val columns = raw.coerceAtLeast(LIBRARY_GRID_MIN_COLUMNS)
     val cardWidth = (available - LIBRARY_GRID_SPACING * (columns - 1)) / columns
     return LibraryGridSpec(columns, cardWidth)
 }

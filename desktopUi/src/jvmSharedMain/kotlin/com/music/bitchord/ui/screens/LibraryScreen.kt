@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.YtMusicRepository
@@ -76,7 +77,6 @@ import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PullToRefresh
 import com.music.bitchord.ui.components.SearchField
 import com.music.bitchord.ui.components.ControlTooltip
-import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.librarySkeleton
 import kotlinx.coroutines.delay
@@ -107,9 +107,7 @@ fun LibraryScreen(
     onNewPlaylist: () -> Unit,
     onImportSpotifyPlaylist: (() -> Unit)? = null,
     /**
-     * A shelf's "Show all" — every shelf's row here stops at five cards (see
-     * [LibraryGridShelf]), so this is the only way to reach whatever didn't
-     * fit.
+     * Opens the rest of a shelf when its responsive preview row is full.
      */
     onShowAll: (HomeShelf) -> Unit,
     /**
@@ -493,13 +491,15 @@ private fun PlaylistShelf(
         onItemLongPress = onItemLongPress,
         onShowAll = onShowAll,
         pinnedPlaylists = pinnedPlaylists,
-        leadingCard = {
+        leadingCardCount = if (onImportSpotifyPlaylist != null) 2 else 1,
+        leadingCard = { cardWidth ->
             Row(horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING)) {
                 NewShelfCard(
                     icon = BitChordIcons.Plus,
                     label = stringResource(Res.string.new_playlist),
                     subtitle = stringResource(Res.string.saved_to_youtube_music),
                     onClick = onNewPlaylist,
+                    modifier = Modifier.width(cardWidth),
                 )
                 if (onImportSpotifyPlaylist != null) {
                     NewShelfCard(
@@ -507,6 +507,7 @@ private fun PlaylistShelf(
                         label = stringResource(Res.string.import_spotify),
                         subtitle = stringResource(Res.string.import_spotify_subtitle),
                         onClick = onImportSpotifyPlaylist,
+                        modifier = Modifier.width(cardWidth),
                         logo = Res.drawable.spotify_logo,
                     )
                 }
@@ -515,18 +516,10 @@ private fun PlaylistShelf(
     )
 }
 
-/** A Library shelf's preview row never swipes past this many cards. */
-private const val LIBRARY_ROW_MAX_ITEMS = 5
-
 /**
- * A Library shelf: a sideways-scrolling row of [SHELF_CARD_WIDTH] cards, the
- * same as every other shelf, but stopped at [LIBRARY_ROW_MAX_ITEMS] rather
- * than left to run the shelf's whole length — with a "Show all" beside the
- * title whenever there's more than that, opening the rest as a
- * vertically-scrolling grid instead. See [LibraryGridPage].
- *
- * [leadingCard], if given, occupies the first slot and counts against that
- * cap — see [PlaylistShelf].
+ * A full-width Library preview, with as many cards as fit in the window.
+ * Extra items remain accessible through Show all. Playlist action tiles take
+ * the same width and count as collection cards.
  */
 @Composable
 internal fun LibraryGridShelf(
@@ -534,29 +527,33 @@ internal fun LibraryGridShelf(
     onItemClick: (ShelfItem) -> Unit,
     onItemLongPress: (ShelfItem) -> Unit,
     onShowAll: () -> Unit,
-    leadingCard: (@Composable () -> Unit)? = null,
+    leadingCard: (@Composable (Dp) -> Unit)? = null,
+    leadingCardCount: Int = if (leadingCard != null) 1 else 0,
     pinnedPlaylists: List<String> = emptyList(),
 ) {
-    val leadingCount = if (leadingCard != null) 1 else 0
-    val visibleItems = shelf.items.take((LIBRARY_ROW_MAX_ITEMS - leadingCount).coerceAtLeast(0))
-    Column(Modifier.padding(bottom = 26.dp)) {
-        SectionHeader(
-            title = shelf.title,
-            subtitle = shelf.subtitle,
-            onShowAll = onShowAll.takeIf { shelf.items.size + leadingCount > LIBRARY_ROW_MAX_ITEMS },
-        )
-        ShelfRow(
-            contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
-            horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING),
-        ) {
-            leadingCard?.let { card -> item(key = "leading") { card() } }
-            items(visibleItems) { item ->
-                ShelfCard(
-                    item = item,
-                    onClick = { onItemClick(item) },
-                    onLongPress = { onItemLongPress(item) },
-                    isPinned = item.browseId != null && item.browseId in pinnedPlaylists,
-                )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
+        val visibleItems = shelf.items.take((grid.columns - leadingCardCount).coerceAtLeast(0))
+        Column(Modifier.padding(bottom = 26.dp)) {
+            SectionHeader(
+                title = shelf.title,
+                subtitle = shelf.subtitle,
+                onShowAll = onShowAll.takeIf { shelf.items.size + leadingCardCount > grid.columns },
+            )
+            ShelfRow(
+                contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING),
+            ) {
+                leadingCard?.let { card -> item(key = "leading") { card(grid.cardWidth) } }
+                items(visibleItems) { item ->
+                    ShelfCard(
+                        item = item,
+                        onClick = { onItemClick(item) },
+                        onLongPress = { onItemLongPress(item) },
+                        modifier = Modifier.width(grid.cardWidth),
+                        isPinned = item.browseId != null && item.browseId in pinnedPlaylists,
+                    )
+                }
             }
         }
     }
