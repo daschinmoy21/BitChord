@@ -55,6 +55,14 @@ enum class SourceKind(
      */
     val rank: Int,
 ) {
+    NAVIDROME(
+        label = "Navidrome",
+        detail = "Your own music server · original files",
+        labels = listOf("Your library", "Original files"),
+        needsServer = true,
+        canServeLossless = true,
+        rank = -1,
+    ),
     /**
      * An addon server the user pointed at themselves.
      *

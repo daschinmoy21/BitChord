@@ -111,6 +111,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.music.bitchord.ui.haptics.Haptic
 import com.music.bitchord.ui.haptics.rememberHaptics
+import com.music.bitchord.ui.components.ControlTooltip
 import com.music.bitchord.ui.icons.BitChordIcons
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.NerdStats
@@ -645,6 +646,7 @@ internal fun PlayerActionRow(
                                 if (shuffleEnabled) Res.string.shuffle_on else Res.string.shuffle_off,
                             ),
                             onClick = onToggleShuffle,
+                            tooltipText = stringResource(if (shuffleEnabled) Res.string.shuffle_on_tooltip else Res.string.shuffle_off_tooltip),
                             highlighted = shuffleEnabled,
                             haptic = if (shuffleEnabled) Haptic.ToggleOff else Haptic.ToggleOn,
                             tapWindowMs = SHUFFLE_TAP_WINDOW_MS,
@@ -659,6 +661,7 @@ internal fun PlayerActionRow(
                                 else -> stringResource(Res.string.repeat_off)
                             },
                             onClick = onCycleRepeat,
+                            tooltipText = stringResource(when (repeatMode) { RepeatModes.ONE -> Res.string.repeat_one_tooltip; RepeatModes.ALL -> Res.string.repeat_all_tooltip; else -> Res.string.repeat_off_tooltip }),
                             highlighted = repeatMode != RepeatModes.OFF,
                             // Three states, so the buzz tracks the edges of the
                             // cycle: leaving off rises, returning to off falls,
@@ -677,6 +680,7 @@ internal fun PlayerActionRow(
                                 if (autoplayEnabled) Res.string.autoplay_on else Res.string.autoplay_off,
                             ),
                             onClick = onToggleAutoplay,
+                            tooltipText = stringResource(if (autoplayEnabled) Res.string.autoplay_on_tooltip else Res.string.autoplay_off_tooltip),
                             highlighted = autoplayEnabled,
                             haptic = if (autoplayEnabled) Haptic.ToggleOff else Haptic.ToggleOn,
                             tapWindowMs = AUTOPLAY_TAP_WINDOW_MS,
@@ -695,6 +699,7 @@ internal fun PlayerActionRow(
                     icon = BitChordIcons.Queue,
                     contentDescription = stringResource(Res.string.up_next),
                     onClick = onToggleQueue,
+                    tooltipText = stringResource(if (queueOpen) Res.string.hide_queue_tooltip else Res.string.show_queue_tooltip),
                     highlighted = queueOpen,
                     haptic = if (queueOpen) Haptic.Tap else Haptic.Expand,
                 )
@@ -718,37 +723,40 @@ internal fun CircleGlyph(
     onClick: () -> Unit,
     active: Boolean = false,
     haptic: Haptic = Haptic.Tap,
+    tooltipText: String = contentDescription,
 ) {
     val haptics = rememberHaptics()
     val discAlpha by animateFloatAsState(
         targetValue = if (active) 0.34f else 0.18f,
         label = "glyphDisc",
     )
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .clip(CircleShape)
-            .background(LocalPlayerTint.current.copy(alpha = discAlpha))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                haptics.play(haptic)
-                onClick()
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Crossfade(
-            targetState = icon,
-            animationSpec = tween(durationMillis = 180),
-            label = "playerMenuGlyph",
-        ) { glyph ->
-            Icon(
-                imageVector = glyph,
-                contentDescription = contentDescription,
-                tint = LocalPlayerTint.current,
-                modifier = Modifier.size(19.dp),
-            )
+    ControlTooltip(tooltipText) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(LocalPlayerTint.current.copy(alpha = discAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    haptics.play(haptic)
+                    onClick()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Crossfade(
+                targetState = icon,
+                animationSpec = tween(durationMillis = 180),
+                label = "playerMenuGlyph",
+            ) { glyph ->
+                Icon(
+                    imageVector = glyph,
+                    contentDescription = contentDescription,
+                    tint = LocalPlayerTint.current,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
         }
     }
 }
@@ -769,6 +777,7 @@ private fun TransportGlyph(
     haptic: Haptic = Haptic.Tap,
     /** Vertical squash of the glyph alone; its width and touch box are untouched. */
     heightScale: Float = 1f,
+    tooltipText: String = contentDescription,
 ) {
     val haptics = rememberHaptics()
     // Faded rather than hidden: the row keeps its shape at the ends of a queue.
@@ -776,27 +785,29 @@ private fun TransportGlyph(
         targetValue = if (enabled) 1f else 0.3f,
         label = "transportAlpha",
     )
-    Box(
-        modifier = Modifier
-            .size(touchSize)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                enabled = enabled,
-            ) {
-                haptics.play(haptic)
-                onClick()
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(icon),
-            contentDescription = contentDescription,
-            tint = Color.White.copy(alpha = alpha),
+    ControlTooltip(tooltipText) {
+        Box(
             modifier = Modifier
-                .size(size)
-                .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
-        )
+                .size(touchSize)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = enabled,
+                ) {
+                    haptics.play(haptic)
+                    onClick()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = contentDescription,
+                tint = Color.White.copy(alpha = alpha),
+                modifier = Modifier
+                    .size(size)
+                    .then(if (heightScale != 1f) Modifier.graphicsLayer { scaleY = heightScale } else Modifier),
+            )
+        }
     }
 }
 
@@ -919,6 +930,7 @@ private fun OutputPartyPill(
             iconSize = output.size,
             contentDescription = stringResource(Res.string.audio_output),
             onClick = onOutput,
+            tooltipText = stringResource(Res.string.audio_output_tooltip),
         )
         PillDivider()
         PillSegment(
@@ -939,6 +951,7 @@ private fun OutputPartyPill(
             // settings page directly; there is nothing to create or join once
             // there is a party, so [onParty] only ever fires beforehand.
             onClick = if (badge.inParty) onOpenMembers else onParty,
+            tooltipText = if (badge.inParty) stringResource(Res.string.listen_together_members_tooltip, badge.members) else stringResource(Res.string.listen_together_tooltip),
             highlighted = badge.inParty,
             trailingLabel = badge.members.takeIf { badge.inParty }?.toString(),
         )
@@ -1006,74 +1019,77 @@ private fun PillSegment(
     tapWindowMs: Long = 0L,
     /** Per-segment override — see [OutputPartyPill]'s three-up capsule. */
     width: Dp = PILL_SEGMENT_WIDTH,
+    tooltipText: String = contentDescription,
 ) {
     val haptics = rememberHaptics()
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
-    Box(
-        modifier = Modifier
-            .width(width)
-            .height(BOTTOM_ACTION_SIZE)
-            .background(if (highlighted) LocalPlayerTint.current.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                enabled = !loading,
-            ) {
-                val now = uptimeMillis()
-                if (now - lastTap.longValue >= tapWindowMs) {
-                    lastTap.longValue = now
-                    haptics.play(haptic)
-                    onClick()
-                }
-            }
-            .semantics { this.contentDescription = contentDescription },
-        contentAlignment = Alignment.Center,
-    ) {
-        val tint = LocalPlayerTint.current.copy(alpha = if (highlighted) 1f else 0.75f)
-        Crossfade(
-            targetState = loading,
-            animationSpec = tween(durationMillis = 200),
-            label = "pillSegmentLoading",
-        ) { isLoading ->
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(17.dp),
-                    color = LocalPlayerTint.current,
-                    strokeWidth = 2.dp,
-                )
-            } else if (icon != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // The size travels with the icon, so the outgoing glyph
-                    // fades at its own size rather than the incoming one's.
-                    Crossfade(
-                        targetState = icon to iconSize,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "pillSegmentIcon",
-                    ) { (currentIcon, currentSize) ->
-                        Icon(
-                            imageVector = currentIcon,
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(currentSize),
-                        )
-                    }
-                    if (trailingLabel != null) {
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = trailingLabel,
-                            color = tint,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
+    ControlTooltip(tooltipText) {
+        Box(
+            modifier = Modifier
+                .width(width)
+                .height(BOTTOM_ACTION_SIZE)
+                .background(if (highlighted) LocalPlayerTint.current.copy(alpha = 0.14f) else Color.Transparent)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = !loading,
+                ) {
+                    val now = uptimeMillis()
+                    if (now - lastTap.longValue >= tapWindowMs) {
+                        lastTap.longValue = now
+                        haptics.play(haptic)
+                        onClick()
                     }
                 }
-            } else if (label != null) {
-                Text(
-                    text = label,
-                    color = tint,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                .semantics { this.contentDescription = contentDescription },
+            contentAlignment = Alignment.Center,
+        ) {
+            val tint = LocalPlayerTint.current.copy(alpha = if (highlighted) 1f else 0.75f)
+            Crossfade(
+                targetState = loading,
+                animationSpec = tween(durationMillis = 200),
+                label = "pillSegmentLoading",
+            ) { isLoading ->
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(17.dp),
+                        color = LocalPlayerTint.current,
+                        strokeWidth = 2.dp,
+                    )
+                } else if (icon != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // The size travels with the icon, so the outgoing glyph
+                        // fades at its own size rather than the incoming one's.
+                        Crossfade(
+                            targetState = icon to iconSize,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "pillSegmentIcon",
+                        ) { (currentIcon, currentSize) ->
+                            Icon(
+                                imageVector = currentIcon,
+                                contentDescription = null,
+                                tint = tint,
+                                modifier = Modifier.size(currentSize),
+                            )
+                        }
+                        if (trailingLabel != null) {
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = trailingLabel,
+                                color = tint,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                } else if (label != null) {
+                    Text(
+                        text = label,
+                        color = tint,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
         }
     }
@@ -1222,48 +1238,51 @@ private fun BottomGlyph(
      * ask for a window.
      */
     tapWindowMs: Long = 0L,
+    tooltipText: String = contentDescription,
 ) {
     val haptics = rememberHaptics()
     // Read only from the click handler, never during composition, so writing it
     // costs no recomposition. Starts a full window in the past so the first tap
     // is never the one that gets swallowed.
     val lastTap = remember { mutableLongStateOf(-tapWindowMs) }
-    Box(
-        modifier = Modifier
-            .size(BOTTOM_ACTION_SIZE)
-            .clip(CircleShape)
-            .background(
-                if (highlighted) LocalPlayerTint.current.copy(alpha = 0.20f) else Color.Transparent,
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) {
-                val now = uptimeMillis()
-                if (now - lastTap.longValue >= tapWindowMs) {
-                    lastTap.longValue = now
-                    haptics.play(haptic)
-                    onClick()
+    ControlTooltip(tooltipText) {
+        Box(
+            modifier = Modifier
+                .size(BOTTOM_ACTION_SIZE)
+                .clip(CircleShape)
+                .background(
+                    if (highlighted) LocalPlayerTint.current.copy(alpha = 0.20f) else Color.Transparent,
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    val now = uptimeMillis()
+                    if (now - lastTap.longValue >= tapWindowMs) {
+                        lastTap.longValue = now
+                        haptics.play(haptic)
+                        onClick()
+                    }
                 }
+                .semantics { this.contentDescription = contentDescription },
+            contentAlignment = Alignment.Center,
+        ) {
+            val tint = LocalPlayerTint.current.copy(alpha = if (highlighted) 1f else 0.75f)
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(26.dp),
+                )
+            } else if (label != null) {
+                Text(
+                    text = label,
+                    color = tint,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                )
             }
-            .semantics { this.contentDescription = contentDescription },
-        contentAlignment = Alignment.Center,
-    ) {
-        val tint = LocalPlayerTint.current.copy(alpha = if (highlighted) 1f else 0.75f)
-        if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(26.dp),
-            )
-        } else if (label != null) {
-            Text(
-                text = label,
-                color = tint,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
-            )
         }
     }
 }

@@ -226,7 +226,8 @@ fun SourcesScreen(
             // under a second heading would break the one thing this screen is
             // for.
             val addons = configs.filter { it.kind.isUserAdded }
-            val fixed = configs.filterNot { it.kind.isUserAdded }
+            val personal = configs.filter { it.kind == SourceKind.NAVIDROME }
+            val fixed = configs.filterNot { it.kind.isUserAdded || it.kind == SourceKind.NAVIDROME }
                 .sortedBy { it.kind.rank }
 
             val row: @Composable (Int, SourceConfig, (@Composable () -> Unit)?) -> Unit =
@@ -265,10 +266,14 @@ fun SourcesScreen(
                     )
                 }
 
+            personal.forEachIndexed { index, config ->
+                row(index + 1, config, null)
+                RowDivider()
+            }
             ReorderableAddons(
                 addons = addons,
                 onReorder = { SourceRegistry.reorderAddons(it.map(SourceConfig::id)) },
-                row = row,
+                row = { position, config, handle -> row(position + personal.size, config, handle) },
             )
 
             // No leading divider when addons came first: each of those wrappers
@@ -276,7 +281,7 @@ fun SourcesScreen(
             // the drag to measure against.
             fixed.forEachIndexed { index, config ->
                 if (index > 0) RowDivider()
-                row(addons.size + index + 1, config, null)
+                row(personal.size + addons.size + index + 1, config, null)
             }
 
             // The one shut-out an addon can't tell apart from "not lossless":
@@ -292,6 +297,12 @@ fun SourcesScreen(
             RowDivider()
             AddSourceRow(
                 onClick = { onEditSource(SourceConfig(kind = SourceKind.ADDON)) },
+            )
+            RowDivider()
+            AddSourceRow(
+                onClick = { onEditSource(SourceConfig(kind = SourceKind.NAVIDROME)) },
+                title = stringResource(R.string.add_navidrome),
+                detail = stringResource(R.string.navidrome_description),
             )
         }
 
@@ -629,7 +640,11 @@ private const val SWAP_THRESHOLD = 0.6f
  * put another one in here".
  */
 @Composable
-private fun AddSourceRow(onClick: () -> Unit) {
+private fun AddSourceRow(
+    onClick: () -> Unit,
+    title: String = stringResource(R.string.add_addon),
+    detail: String = stringResource(R.string.add_addon_detail),
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -650,12 +665,12 @@ private fun AddSourceRow(onClick: () -> Unit) {
         Spacer(Modifier.width(ICON_GAP))
         Column(Modifier.weight(1f)) {
             Text(
-                text = stringResource(R.string.add_addon),
+                text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                text = stringResource(R.string.add_addon_detail),
+                text = detail,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -790,6 +805,7 @@ private fun SourceRow(
         Spacer(Modifier.width(6.dp))
         Icon(
             imageVector = when (config.kind) {
+                SourceKind.NAVIDROME -> Icons.Rounded.Dns
                 SourceKind.ADDON -> Icons.Rounded.Extension
                 SourceKind.CUSTOM_MODULE -> Icons.Rounded.Extension
                 SourceKind.MODULE -> Icons.Rounded.Extension
@@ -927,6 +943,10 @@ internal fun SourceEditorAlert(
     onDelete: () -> Unit,
     scope: kotlinx.coroutines.CoroutineScope,
 ) {
+    if (config.kind == SourceKind.NAVIDROME) {
+        NavidromeEditorAlert(config = config, onDismiss = onDismiss, onSaved = onSaved, onDelete = onDelete)
+        return
+    }
     val isNew = SourceRegistry.config(config.id) == null
     var baseUrl by remember { mutableStateOf(config.baseUrl) }
     var busy by remember { mutableStateOf(false) }

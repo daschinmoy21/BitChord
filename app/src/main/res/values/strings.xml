@@ -1232,4 +1232,9 @@
     <string name="wear_os_code_hint">Pairing code</string>
     <string name="wear_os_done">Done</string>
     <string name="signed_by">Signed by %1$s</string>
+    <string name="add_navidrome">Add Navidrome</string>
+    <string name="navidrome_description">Connect your Navidrome or Subsonic server to browse albums, search artists and play your own files.</string>
+    <string name="navidrome_server_address">Server address</string>
+    <string name="navidrome_keep_password">Password (leave blank to keep it)</string>
+    <string name="navidrome_name">Name (optional)</string>
 </resources>

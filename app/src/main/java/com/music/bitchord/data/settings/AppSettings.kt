@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * caps, and it is the only source that can answer at all when the ones
  * above it are skipped.
  */
-fun AudioQuality.permits(kind: SourceKind): Boolean = when (this) {
+fun AudioQuality.permits(kind: SourceKind): Boolean = kind == SourceKind.NAVIDROME || when (this) {
     AudioQuality.LOSSLESS -> true
     // No lossless answer is wanted here, and a source that can serve one is
     // the slow half of the list: an addon fronting several catalogues walks
@@ -2103,6 +2103,5 @@ object AppSettings {
     private const val KEY_DISCORD_INFO_DISMISSED = "discord_info_dismissed"
     private const val KEY_LAST_VERSION_CODE = "last_version_code"
 }
-
 
 
