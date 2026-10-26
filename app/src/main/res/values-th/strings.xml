@@ -1368,4 +1368,5 @@
     <string name="navidrome_server_address">ที่อยู่เซิร์ฟเวอร์</string>
     <string name="navidrome_keep_password">รหัสผ่าน (เว้นว่างไว้เพื่อใช้รหัสเดิม)</string>
     <string name="navidrome_name">ชื่อ (ไม่บังคับ)</string>
+    <string name="lyrics_sync_to_audio">ซิงค์กับเสียง</string>
 </resources>

@@ -1417,4 +1417,5 @@
     <string name="navidrome_server_address">Адрес сервера</string>
     <string name="navidrome_keep_password">Пароль (оставьте пустым, чтобы сохранить текущий)</string>
     <string name="navidrome_name">Название (необязательно)</string>
+    <string name="lyrics_sync_to_audio">Синхронизировать с аудио</string>
 </resources>

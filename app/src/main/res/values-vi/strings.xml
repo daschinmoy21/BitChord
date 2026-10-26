@@ -1302,4 +1302,5 @@
     <string name="navidrome_server_address">Địa chỉ máy chủ</string>
     <string name="navidrome_keep_password">Mật khẩu (để trống để giữ mật khẩu hiện tại)</string>
     <string name="navidrome_name">Tên (không bắt buộc)</string>
+    <string name="lyrics_sync_to_audio">Đồng bộ với âm thanh</string>
 </resources>

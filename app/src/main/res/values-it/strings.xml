@@ -1324,4 +1324,5 @@
     <string name="navidrome_server_address">Indirizzo del server</string>
     <string name="navidrome_keep_password">Password (lascia vuoto per mantenere quella attuale)</string>
     <string name="navidrome_name">Nome (facoltativo)</string>
+    <string name="lyrics_sync_to_audio">Sincronizza con l’audio</string>
 </resources>

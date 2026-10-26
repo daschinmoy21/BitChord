@@ -1357,4 +1357,5 @@
     <string name="navidrome_server_address">Dirección del servidor</string>
     <string name="navidrome_keep_password">Contraseña (dejar en blanco para conservarla)</string>
     <string name="navidrome_name">Nombre (opcional)</string>
+    <string name="lyrics_sync_to_audio">Sincronizar con el audio</string>
 </resources>

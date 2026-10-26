@@ -227,4 +227,5 @@
     <string name="library_refresh">Refresh library</string>
     <string name="library_refresh_tooltip">Refetch saved collections and albums from your connected music sources.</string>
     <string name="library_source_search_failed">Couldn’t search: %1$s. Other available results are shown.</string>
+    <string name="lyrics_sync_to_audio">Sync to audio</string>
 </resources>

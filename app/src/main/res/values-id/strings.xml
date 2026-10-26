@@ -1362,4 +1362,5 @@
     <string name="navidrome_server_address">Alamat server</string>
     <string name="navidrome_keep_password">Kata sandi (kosongkan untuk mempertahankan)</string>
     <string name="navidrome_name">Nama (opsional)</string>
+    <string name="lyrics_sync_to_audio">Sinkronkan ke audio</string>
 </resources>

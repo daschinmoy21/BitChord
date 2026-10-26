@@ -1278,4 +1278,5 @@
     <string name="navidrome_server_address">伺服器位址</string>
     <string name="navidrome_keep_password">密碼（留空以保留現有密碼）</string>
     <string name="navidrome_name">名稱（選填）</string>
+    <string name="lyrics_sync_to_audio">與音訊同步</string>
 </resources>

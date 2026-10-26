@@ -1385,4 +1385,5 @@
     <string name="navidrome_server_address">सर्वर का पता</string>
     <string name="navidrome_keep_password">पासवर्ड (मौजूदा पासवर्ड रखने के लिए खाली छोड़ें)</string>
     <string name="navidrome_name">नाम (वैकल्पिक)</string>
+    <string name="lyrics_sync_to_audio">ऑडियो से सिंक करें</string>
 </resources>

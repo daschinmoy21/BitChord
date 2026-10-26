@@ -1390,4 +1390,5 @@
     <string name="navidrome_server_address">כתובת השרת</string>
     <string name="navidrome_keep_password">סיסמה (יש להשאיר ריק כדי לשמור על הקיימת)</string>
     <string name="navidrome_name">שם (לא חובה)</string>
+    <string name="lyrics_sync_to_audio">סנכרון לשמע</string>
 </resources>
