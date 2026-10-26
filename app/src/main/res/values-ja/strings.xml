@@ -1358,4 +1358,9 @@
     <string name="song_info_unavailable">情報なし</string>
     <string name="song_info_error">一部の情報を読み込めませんでした。</string>
     <string name="song_info_retry">再試行</string>
+    <string name="add_navidrome">Navidromeを追加</string>
+    <string name="navidrome_description">NavidromeまたはSubsonicサーバーに接続して、アルバムの閲覧、アーティストの検索、自分のファイルの再生ができます。</string>
+    <string name="navidrome_server_address">サーバーアドレス</string>
+    <string name="navidrome_keep_password">パスワード（変更しない場合は空欄）</string>
+    <string name="navidrome_name">名前（任意）</string>
 </resources>

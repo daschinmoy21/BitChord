@@ -1297,4 +1297,9 @@
     <string name="song_info_unavailable">Không có thông tin</string>
     <string name="song_info_error">Không thể tải một số thông tin.</string>
     <string name="song_info_retry">Thử lại</string>
+    <string name="add_navidrome">Thêm Navidrome</string>
+    <string name="navidrome_description">Kết nối máy chủ Navidrome hoặc Subsonic để duyệt album, tìm nghệ sĩ và phát các tệp của bạn.</string>
+    <string name="navidrome_server_address">Địa chỉ máy chủ</string>
+    <string name="navidrome_keep_password">Mật khẩu (để trống để giữ mật khẩu hiện tại)</string>
+    <string name="navidrome_name">Tên (không bắt buộc)</string>
 </resources>

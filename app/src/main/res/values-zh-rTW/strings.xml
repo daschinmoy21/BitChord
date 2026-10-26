@@ -1357,4 +1357,9 @@
     <string name="story_recent_title">最近播放</string>
     <string name="story_share_link">分享連結</string>
     <string name="story_export_error">無法儲存或分享圖片。請重試。</string>
+    <string name="add_navidrome">新增 Navidrome</string>
+    <string name="navidrome_description">連線至你的 Navidrome 或 Subsonic 伺服器，瀏覽專輯、搜尋藝人並播放自己的檔案。</string>
+    <string name="navidrome_server_address">伺服器位址</string>
+    <string name="navidrome_keep_password">密碼（留空以保留現有密碼）</string>
+    <string name="navidrome_name">名稱（選填）</string>
 </resources>

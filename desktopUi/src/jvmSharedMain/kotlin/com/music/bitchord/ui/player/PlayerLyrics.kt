@@ -351,14 +351,11 @@ private val GAP_ROW_SPACING = 16.dp
 private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.42f, 0.28f, 0.2f, 0.16f)
 
 /**
- * How the lines already sung fall away above the playing one.
- *
- * Unlike the read-ahead falloff above, this one runs straight to nothing: a line
- * is fully gone the moment it is no longer the one being sung, rather than
- * lingering as a half-lit ghost. The lines ahead keep their gentler ramp, so
- * what is coming stays legible.
+ * Keep the previous two lyric lines readable, with the same near-line dimming
+ * as the upcoming words. Older lines fade to zero rather than disappearing
+ * as soon as the singing advances. Blur still increases with distance.
  */
-private val LINE_SUNG_ALPHA = floatArrayOf(1f, 0f)
+private val LINE_SUNG_ALPHA = floatArrayOf(1f, 0.42f, 0.28f, 0f)
 
 /**
  * How far a line defocuses per row of distance from the one being sung, and the

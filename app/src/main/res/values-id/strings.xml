@@ -1357,4 +1357,9 @@
     <string name="song_info_unavailable">Tidak tersedia</string>
     <string name="song_info_error">Sebagian informasi tidak dapat dimuat.</string>
     <string name="song_info_retry">Coba lagi</string>
+    <string name="add_navidrome">Tambahkan Navidrome</string>
+    <string name="navidrome_description">Hubungkan server Navidrome atau Subsonic Anda untuk menelusuri album, mencari artis, dan memutar berkas Anda.</string>
+    <string name="navidrome_server_address">Alamat server</string>
+    <string name="navidrome_keep_password">Kata sandi (kosongkan untuk mempertahankan)</string>
+    <string name="navidrome_name">Nama (opsional)</string>
 </resources>

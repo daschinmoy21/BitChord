@@ -1363,4 +1363,9 @@
     <string name="song_info_unavailable">ไม่มีข้อมูล</string>
     <string name="song_info_error">ไม่สามารถโหลดข้อมูลบางส่วนได้</string>
     <string name="song_info_retry">ลองอีกครั้ง</string>
+    <string name="add_navidrome">เพิ่ม Navidrome</string>
+    <string name="navidrome_description">เชื่อมต่อเซิร์ฟเวอร์ Navidrome หรือ Subsonic เพื่อเรียกดูอัลบั้ม ค้นหาศิลปิน และเล่นไฟล์ของคุณ</string>
+    <string name="navidrome_server_address">ที่อยู่เซิร์ฟเวอร์</string>
+    <string name="navidrome_keep_password">รหัสผ่าน (เว้นว่างไว้เพื่อใช้รหัสเดิม)</string>
+    <string name="navidrome_name">ชื่อ (ไม่บังคับ)</string>
 </resources>

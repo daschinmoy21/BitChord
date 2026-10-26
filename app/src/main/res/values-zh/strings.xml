@@ -1357,4 +1357,9 @@
     <string name="song_info_unavailable">暂无信息</string>
     <string name="song_info_error">部分信息无法加载。</string>
     <string name="song_info_retry">重试</string>
+    <string name="add_navidrome">添加 Navidrome</string>
+    <string name="navidrome_description">连接你的 Navidrome 或 Subsonic 服务器，浏览专辑、搜索艺人并播放自己的文件。</string>
+    <string name="navidrome_server_address">服务器地址</string>
+    <string name="navidrome_keep_password">密码（留空以保留现有密码）</string>
+    <string name="navidrome_name">名称（可选）</string>
 </resources>

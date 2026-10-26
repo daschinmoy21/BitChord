@@ -1337,4 +1337,9 @@
     <string name="wear_os_code_hint">Eşleme kodu</string>
     <string name="wear_os_done">Bitti</string>
     <string name="signed_by">%1$s tarafından imzalandı</string>
+    <string name="add_navidrome">Navidrome ekle</string>
+    <string name="navidrome_description">Albümlere göz atmak, sanatçı aramak ve kendi dosyalarınızı çalmak için Navidrome veya Subsonic sunucunuzu bağlayın.</string>
+    <string name="navidrome_server_address">Sunucu adresi</string>
+    <string name="navidrome_keep_password">Parola (mevcut parolayı korumak için boş bırakın)</string>
+    <string name="navidrome_name">Ad (isteğe bağlı)</string>
 </resources>

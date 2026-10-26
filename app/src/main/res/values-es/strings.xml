@@ -1352,4 +1352,9 @@
     <string name="song_info_unavailable">No disponible</string>
     <string name="song_info_error">No se pudo cargar parte de la información.</string>
     <string name="song_info_retry">Reintentar</string>
+    <string name="add_navidrome">Añadir Navidrome</string>
+    <string name="navidrome_description">Conecta tu servidor Navidrome o Subsonic para explorar álbumes, buscar artistas y reproducir tus archivos.</string>
+    <string name="navidrome_server_address">Dirección del servidor</string>
+    <string name="navidrome_keep_password">Contraseña (dejar en blanco para conservarla)</string>
+    <string name="navidrome_name">Nombre (opcional)</string>
 </resources>
