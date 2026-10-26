@@ -191,6 +191,8 @@ data class DesktopCollection(
 }
 
 internal fun browseTypeOf(browseId: String): BrowseType = when {
+    com.music.bitchord.data.navidrome.NavidromeLibrary.parseArtist(browseId) != null -> BrowseType.ARTIST
+    com.music.bitchord.data.navidrome.NavidromeLibrary.parseAlbum(browseId) != null -> BrowseType.ALBUM
     browseId.startsWith("MPREb_") || browseId.startsWith("OLAK5uy_") -> BrowseType.ALBUM
     browseId.startsWith("VL") -> BrowseType.PLAYLIST
     browseId.startsWith("UC") -> BrowseType.ARTIST

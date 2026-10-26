@@ -313,6 +313,7 @@ import com.music.bitchord.data.settings.LocalMusicSort
 import com.music.bitchord.ui.screens.HomeScreen
 import com.music.bitchord.ui.screens.LibraryGridPage
 import com.music.bitchord.ui.screens.LibraryScreen
+import com.music.bitchord.ui.screens.rememberLibrarySearchState
 import com.music.bitchord.ui.screens.MoodGenrePlaylistsScreen
 import com.music.bitchord.ui.screens.SearchScreen
 import com.music.bitchord.data.settings.SongSort
@@ -502,6 +503,7 @@ private fun BitChordApp(
     // and the page is a sibling of the bar rather than a child.
     val navBarScroll = rememberFloatingTabBarScrollConnection()
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val librarySearchState = rememberLibrarySearchState()
     /**
      * Whether the player's sheet is up. The player is always a full-screen
      * take-over raised over the page, on every window size — the library
@@ -754,6 +756,10 @@ private fun BitChordApp(
     val selectedMoodGenre by viewModel.selectedMoodGenre.collectAsStateWithLifecycle()
     val moodGenreShelves by viewModel.moodGenreShelves.collectAsStateWithLifecycle()
     val libraryState by viewModel.library.collectAsStateWithLifecycle()
+    val navidromeAlbums by viewModel.navidromeAlbums.collectAsStateWithLifecycle()
+    val navidromeError by viewModel.navidromeError.collectAsStateWithLifecycle()
+    val navidromeLoading by viewModel.navidromeLoading.collectAsStateWithLifecycle()
+    val librarySourceConfigs by SourceRegistry.configs.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
     val searchSource by viewModel.searchSource.collectAsStateWithLifecycle()
     val libraryResults by viewModel.libraryResults.collectAsStateWithLifecycle()
@@ -2008,6 +2014,17 @@ private fun BitChordApp(
     // Shared by the Library tab itself and by a shelf's "Show all" page, so a
     // card opens the same way from either.
     val onLibraryItemClick: (ShelfItem) -> Unit = { item ->
+        item.videoId?.let { id ->
+            val reference = SourceRegistry.parseTrackKey(id)
+            val sourceSong = reference?.let { (sourceId, trackId) ->
+                (SourceRegistry.instance(sourceId) as? com.music.bitchord.data.sources.NavidromeSource)?.rememberedSong(trackId)
+            }
+            playFrom(
+                listOf(sourceSong ?: Song(videoId = id, title = item.title, artist = item.subtitle, thumbnailUrl = item.thumbnailUrl)),
+                0,
+                QueueSource(context.getString(R.string.library), PlaybackSourceType.SEARCH),
+            )
+        }
         item.browseId?.let { id ->
             if (id == SPOTIFY_BROWSE_ID) {
                 navigator.push(AppRoute.Spotify)
@@ -2242,6 +2259,9 @@ private fun BitChordApp(
         linksLoading = false
         if (!playerShowing) return@LaunchedEffect
         val current = player.song ?: return@LaunchedEffect
+        if (SourceRegistry.parseTrackKey(current.videoId)?.first?.let(SourceRegistry::config)?.kind == SourceKind.NAVIDROME) {
+            return@LaunchedEffect
+        }
         if (current.albumId != null && current.artistId != null) return@LaunchedEffect
         linksLoading = true
         links = YtMusicRepository.trackLinks(current.videoId).getOrNull()
@@ -2697,10 +2717,11 @@ private fun BitChordApp(
                         } else if (pageRoute is AppRoute.LibraryShowAll) {
                             pageRoute.shelf.let { shelf ->
                                 LibraryGridPage(
+                                    initialQuery = librarySearchState.collectionQuery,
                                     shelf = shelf,
                                     gridState = libraryShowAllGridState,
                                     onItemClick = onLibraryItemClick,
-                                    onItemLongPress = onBrowseLongPress,
+                                    onItemLongPress = onShelfLongPress,
                                     // Only the Playlists shelf can grow one — see
                                     // [PlaylistShelf].
                                     onNewPlaylist = if (shelf.title == YtMusicRepository.PLAYLISTS_SHELF) {
@@ -3311,6 +3332,11 @@ private fun BitChordApp(
                                 },
                             )
                             else -> LibraryScreen(
+                                searchState = librarySearchState,
+                                searchCatalog = viewModel::searchLibrarySources,
+                                searchRevision = listOf(librarySourceConfigs, navidromeAlbums, refreshing, signedIn, selectedChannelName),
+                                sourceError = navidromeError,
+                                signedOutShelves = if (navidromeAlbums.isEmpty()) emptyList() else listOf(HomeShelf("Albums", navidromeAlbums)),
                                 signedIn = signedIn,
                                 state = libraryState,
                                 listState = libraryListState,
@@ -3319,7 +3345,7 @@ private fun BitChordApp(
                                 // own playlists get rename and delete on top of what a saved
                                 // album or a Liked Music card gets. Holding an artist still
                                 // does nothing; see [onBrowseLongPress].
-                                onShelfItemLongPress = onBrowseLongPress,
+                                onShelfItemLongPress = onShelfLongPress,
                                 onNewPlaylist = { creatingPlaylist = true },
                                 onImportSpotifyPlaylist = { showSpotifyImportDialog = true },
                                 onShowAll = { shelf -> navigator.push(AppRoute.LibraryShowAll(shelf)) },
@@ -3337,7 +3363,7 @@ private fun BitChordApp(
                                 },
                                 onSignIn = { webSession = WebSessionMode.SIGN_IN },
                                 onRetry = viewModel::loadLibrary,
-                                refreshing = MainViewModel.Feed.LIBRARY in refreshing,
+                                refreshing = MainViewModel.Feed.LIBRARY in refreshing || navidromeLoading,
                                 onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
                                 pullState = libraryPull,
                                 contentPadding = listPadding,
@@ -4557,7 +4583,8 @@ private fun BitChordApp(
             val playlist = target.browseId
                 ?.takeIf { signedIn && ownedPlaylists[it] == true }
                 ?.let { id -> playlists.firstOrNull { it.browseId == id } }
-            val remote = target.browseId?.startsWith("local:") == false
+            val remote = target.browseId?.startsWith("local:") == false &&
+                com.music.bitchord.data.navidrome.NavidromeLibrary.parseAlbum(target.browseId.orEmpty()) == null
             // Spotify playlists saved on this device ("local:playlist:sp_local_…")
             // carry real YouTube video ids, so they download like a remote
             // playlist — but they have no YouTube Music page, so Share stays

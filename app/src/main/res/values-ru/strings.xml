@@ -1412,4 +1412,10 @@
     <string name="song_info_unavailable">Недоступно</string>
     <string name="song_info_error">Не удалось загрузить часть информации.</string>
     <string name="song_info_retry">Повторить</string>
+    <string name="add_navidrome">Добавить Navidrome</string>
+    <string name="navidrome_description">Подключите сервер Navidrome или Subsonic, чтобы просматривать альбомы, искать исполнителей и воспроизводить свои файлы.</string>
+    <string name="navidrome_server_address">Адрес сервера</string>
+    <string name="navidrome_keep_password">Пароль (оставьте пустым, чтобы сохранить текущий)</string>
+    <string name="navidrome_name">Название (необязательно)</string>
+    <string name="lyrics_sync_to_audio">Синхронизировать с аудио</string>
 </resources>

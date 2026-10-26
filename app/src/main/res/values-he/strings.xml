@@ -1385,4 +1385,10 @@
     <string name="song_info_unavailable">לא זמין</string>
     <string name="song_info_error">לא ניתן לטעון חלק מהמידע.</string>
     <string name="song_info_retry">ניסיון חוזר</string>
+    <string name="add_navidrome">הוספת Navidrome</string>
+    <string name="navidrome_description">חיבור לשרת Navidrome או Subsonic כדי לעיין באלבומים, לחפש אמנים ולהשמיע את הקבצים שלך.</string>
+    <string name="navidrome_server_address">כתובת השרת</string>
+    <string name="navidrome_keep_password">סיסמה (יש להשאיר ריק כדי לשמור על הקיימת)</string>
+    <string name="navidrome_name">שם (לא חובה)</string>
+    <string name="lyrics_sync_to_audio">סנכרון לשמע</string>
 </resources>

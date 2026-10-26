@@ -10,6 +10,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -26,18 +28,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -45,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.music.bitchord.data.YtMusicRepository
+import com.music.bitchord.data.LibraryCatalogResult
+import com.music.bitchord.data.model.SearchFilter
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.LibraryPage
 import com.music.bitchord.data.model.ShelfItem
@@ -57,9 +73,12 @@ import com.music.bitchord.ui.components.LIBRARY_GRID_SPACING
 import com.music.bitchord.ui.components.MessageState
 import com.music.bitchord.ui.components.PAGE_GUTTER
 import com.music.bitchord.ui.components.PullToRefresh
+import com.music.bitchord.ui.components.SearchField
+import com.music.bitchord.ui.components.ControlTooltip
 import com.music.bitchord.ui.components.SHELF_CARD_WIDTH
 import com.music.bitchord.ui.components.libraryGrid
 import com.music.bitchord.ui.components.librarySkeleton
+import kotlinx.coroutines.delay
 
 /**
  * The signed-in library: the saved collections, as shelves of cards.
@@ -122,9 +141,58 @@ fun LibraryScreen(
      * there still ends on the sign-in message.
      */
     signedOutShelves: List<HomeShelf> = emptyList(),
+    searchState: LibrarySearchState = rememberLibrarySearchState(),
+    searchCatalog: (suspend (String, SearchFilter) -> LibraryCatalogResult)? = null,
+    searchRevision: Any? = null,
+    sourceError: String? = null,
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
+    var query by searchState::query
+    var filter by searchState::filter
+    val catalogFilter = when (filter) {
+        LibraryFilter.ALL -> SearchFilter.ALL
+        LibraryFilter.PLAYLISTS -> SearchFilter.PLAYLISTS
+        LibraryFilter.ALBUMS -> SearchFilter.ALBUMS
+        LibraryFilter.ARTISTS -> SearchFilter.ARTISTS
+        LibraryFilter.ON_DEVICE, LibraryFilter.PODCASTS -> null
+    }
+    val currentSearch by rememberUpdatedState(searchCatalog)
+    var catalog by remember(query, filter, searchRevision) { mutableStateOf<LibraryCatalogResult?>(null) }
+    val searchOnline = searchCatalog != null && query.isNotBlank() && catalogFilter != null
+    LaunchedEffect(query, filter, searchRevision) {
+        if (searchOnline) {
+            delay(350)
+            catalog = currentSearch?.invoke(query.trim(), catalogFilter)
+        }
+    }
+    val filtering = query.isNotBlank() || filter != LibraryFilter.ALL
+    val sourceShelves = if (signedIn) (state as? UiState.Success)?.data?.shelves.orEmpty() else signedOutShelves
+    val shelves = remember(sourceShelves, query, filter) { sourceShelves.filterLibrary(query, filter) }
+    val catalogShelves = remember(catalog, shelves) {
+        val shown = shelves.flatMap { it.items }.map { it.videoId ?: it.browseId }.toSet()
+        catalog?.shelves.orEmpty().map { shelf ->
+            shelf.copy(items = shelf.items.filter { (it.videoId ?: it.browseId) !in shown })
+        }.filter { it.items.isNotEmpty() }
+    }
+    val matchingDeviceItems = remember(deviceItems, query, filter) {
+        if (filter == LibraryFilter.ALL || filter == LibraryFilter.ON_DEVICE) deviceItems.matchingLibraryQuery(query)
+        else emptyList()
+    }
+    val matchingLinks = remember(links, query, filter) {
+        val matchingItems = links.map { it.item }.matchingLibraryQuery(query).toSet()
+        links.filter { link ->
+            link.item in matchingItems && (filter == LibraryFilter.ALL ||
+                filter == LibraryFilter.ON_DEVICE && link.item.browseId?.startsWith("local:") == true)
+        }
+    }
+    val showPlaylistActions = query.isBlank() && (filter == LibraryFilter.ALL || filter == LibraryFilter.PLAYLISTS)
+    fun openShelf(shelf: HomeShelf) {
+        // The grid starts with the current query but retains every item, so clearing
+        // its search restores the full collection rather than a filtered snapshot.
+        searchState.collectionQuery = query
+        onShowAll(sourceShelves.firstOrNull { it.title == shelf.title } ?: shelf.copy(items = deviceItems))
+    }
     PullToRefresh(
         refreshing = refreshing,
         onRefresh = onRefresh,
@@ -146,22 +214,42 @@ fun LibraryScreen(
                     )
                 }
             }
-            item(key = "replay") { replay() }
-            if (links.isNotEmpty()) {
-                item(key = "links") { LibraryLinkList(links = links, onClick = onShelfItemClick) }
+            item(key = "search") {
+                LibrarySearchControls(
+                    query = query,
+                    onQueryChange = { query = it },
+                    filter = filter,
+                    onFilterChange = { filter = it },
+                    refreshing = refreshing,
+                    onRefresh = onRefresh,
+                )
             }
-            if (deviceItems.isNotEmpty()) {
+            if (!filtering) {
+                item(key = "replay") { replay() }
+            }
+            if (matchingLinks.isNotEmpty()) {
+                item(key = "links") { LibraryLinkList(links = matchingLinks, onClick = onShelfItemClick) }
+            }
+            if (matchingDeviceItems.isNotEmpty()) {
                 item(key = "shelf:$onDevice") {
-                    val onDeviceShelf = HomeShelf(title = onDevice, items = deviceItems)
+                    val onDeviceShelf = HomeShelf(title = onDevice, items = matchingDeviceItems)
                     LibraryGridShelf(
                         shelf = onDeviceShelf,
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
-                        onShowAll = { onShowAll(onDeviceShelf) },
+                        onShowAll = { openShelf(onDeviceShelf) },
                     )
                 }
             }
-            if (!signedIn) {
+            if (filtering && shelves.isEmpty() && matchingDeviceItems.isEmpty() && matchingLinks.isEmpty() &&
+                (!signedIn || state is UiState.Success || filter == LibraryFilter.ON_DEVICE) &&
+                (!searchOnline || catalog != null && catalog!!.shelves.isEmpty() && catalog!!.failedSources.isEmpty())
+            ) {
+                item(key = "no_matches") {
+                    LibraryNoMatches(onClear = { query = ""; filter = LibraryFilter.ALL })
+                }
+            }
+            if (showPlaylistActions && shelves.none { it.title == PLAYLISTS } && (!signedIn || state is UiState.Success)) {
                 item(key = "shelf:$PLAYLISTS") {
                     val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
                     PlaylistShelf(
@@ -170,79 +258,148 @@ fun LibraryScreen(
                         onItemLongPress = onShelfItemLongPress,
                         onNewPlaylist = onNewPlaylist,
                         onImportSpotifyPlaylist = onImportSpotifyPlaylist,
-                        onShowAll = { onShowAll(emptyPlaylists) },
+                        onShowAll = { searchState.collectionQuery = ""; onShowAll(emptyPlaylists) },
                     )
                 }
-                signedOutShelves.forEach { shelf ->
-                    item(key = "shelf:${shelf.title}") {
+            }
+            shelves.forEach { shelf ->
+                item(key = "shelf:${shelf.title}") {
+                    val pinnedFirst = shelf.pinnedFirst(pinnedPlaylists)
+                    if (shelf.title == PLAYLISTS && showPlaylistActions) {
+                        PlaylistShelf(
+                            shelf = pinnedFirst,
+                            onItemClick = onShelfItemClick,
+                            onItemLongPress = onShelfItemLongPress,
+                            onNewPlaylist = onNewPlaylist,
+                            onImportSpotifyPlaylist = onImportSpotifyPlaylist,
+                            onShowAll = { openShelf(shelf) },
+                            pinnedPlaylists = pinnedPlaylists,
+                        )
+                    } else {
+                        LibraryGridShelf(
+                            shelf = pinnedFirst,
+                            onItemClick = onShelfItemClick,
+                            onItemLongPress = onShelfItemLongPress,
+                            onShowAll = { openShelf(shelf) },
+                            pinnedPlaylists = pinnedPlaylists,
+                        )
+                    }
+                }
+            }
+            if (searchOnline) {
+                if (catalog == null) {
+                    item(key = "catalog_loading") {
+                        Row(Modifier.fillMaxWidth().padding(PAGE_GUTTER), horizontalArrangement = Arrangement.Center) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    }
+                }
+                catalogShelves.forEachIndexed { index, shelf ->
+                    item(key = "catalog:$index:${shelf.title}") {
                         LibraryGridShelf(
                             shelf = shelf,
                             onItemClick = onShelfItemClick,
                             onItemLongPress = onShelfItemLongPress,
-                            onShowAll = { onShowAll(shelf) },
+                            onShowAll = { searchState.collectionQuery = ""; onShowAll(shelf) },
                         )
                     }
                 }
-                item {
+                if (!catalog?.failedSources.isNullOrEmpty()) {
+                    item(key = "catalog_error") {
+                        MessageState(stringResource(Res.string.library_source_search_failed, catalog!!.failedSources.joinToString(", ")))
+                    }
+                }
+            }
+            if (filter == LibraryFilter.ON_DEVICE) return@LazyColumn
+            if (sourceError != null) {
+                item(key = "source_error") {
+                    MessageState(sourceError, actionLabel = stringResource(Res.string.retry), onAction = onRefresh)
+                }
+            }
+            if (!signedIn) {
+                item(key = "sign_in") {
                     MessageState(
                         message = stringResource(Res.string.library_sign_in_description),
                         actionLabel = stringResource(Res.string.sign_in),
                         onAction = onSignIn,
                     )
                 }
-                return@LazyColumn
-            }
-            when (state) {
+            } else when (state) {
                 is UiState.Loading -> librarySkeleton()
-                is UiState.Error -> item {
+                is UiState.Error -> item(key = "library_error") {
                     MessageState(state.message, actionLabel = stringResource(Res.string.retry), onAction = onRetry)
                 }
-                is UiState.Success -> {
-                    // A fresh account has no Playlists shelf at all, and that
-                    // is exactly the account most in need of the button that
-                    // makes one — so the row is drawn either way, empty but
-                    // for the tile that creates the first playlist.
-                    val shelves = state.data.shelves
-                    if (shelves.none { it.title == PLAYLISTS }) {
-                        item(key = "shelf:$PLAYLISTS") {
-                            val emptyPlaylists = HomeShelf(PLAYLISTS, emptyList())
-                            PlaylistShelf(
-                                shelf = emptyPlaylists,
-                                onItemClick = onShelfItemClick,
-                                onItemLongPress = onShelfItemLongPress,
-                                onNewPlaylist = onNewPlaylist,
-                                onImportSpotifyPlaylist = onImportSpotifyPlaylist,
-                                onShowAll = { onShowAll(emptyPlaylists) },
-                            )
-                        }
-                    }
-                    shelves.forEach { shelf ->
-                        item(key = "shelf:${shelf.title}") {
-                            if (shelf.title == PLAYLISTS) {
-                                val pinnedFirst = shelf.pinnedFirst(pinnedPlaylists)
-                                PlaylistShelf(
-                                    shelf = pinnedFirst,
-                                    onItemClick = onShelfItemClick,
-                                    onItemLongPress = onShelfItemLongPress,
-                                    onNewPlaylist = onNewPlaylist,
-                                    onImportSpotifyPlaylist = onImportSpotifyPlaylist,
-                                    onShowAll = { onShowAll(pinnedFirst) },
-                                    pinnedPlaylists = pinnedPlaylists,
-                                )
-                            } else {
-                                LibraryGridShelf(
-                                    shelf = shelf,
-                                    onItemClick = onShelfItemClick,
-                                    onItemLongPress = onShelfItemLongPress,
-                                    onShowAll = { onShowAll(shelf) },
-                                )
-                            }
-                        }
+                is UiState.Success -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySearchControls(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    filter: LibraryFilter? = null,
+    onFilterChange: (LibraryFilter) -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(horizontal = PAGE_GUTTER),
+    refreshing: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
+) {
+    Column(Modifier.padding(vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(contentPadding), verticalAlignment = Alignment.CenterVertically) {
+            SearchField(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSubmit = {},
+                placeholder = stringResource(Res.string.library_search_hint),
+                modifier = Modifier.weight(1f),
+            )
+            if (onRefresh != null) {
+                ControlTooltip(stringResource(Res.string.library_refresh_tooltip)) {
+                    IconButton(onClick = onRefresh, enabled = !refreshing) {
+                        if (refreshing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Rounded.Refresh, contentDescription = stringResource(Res.string.library_refresh))
                     }
                 }
             }
         }
+        if (filter != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = PAGE_GUTTER),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                LibraryFilter.entries.forEach { entry ->
+                    FilterChip(
+                        selected = entry == filter,
+                        onClick = { onFilterChange(entry) },
+                        label = { Text(libraryFilterLabel(entry), maxLines = 1) },
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun libraryFilterLabel(filter: LibraryFilter): String = stringResource(
+    when (filter) {
+        LibraryFilter.ALL -> Res.string.library_filter_all
+        LibraryFilter.PLAYLISTS -> Res.string.playlists
+        LibraryFilter.ALBUMS -> Res.string.albums
+        LibraryFilter.ARTISTS -> Res.string.artists
+        LibraryFilter.PODCASTS -> Res.string.library_filter_podcasts
+        LibraryFilter.ON_DEVICE -> Res.string.on_device
+    },
+)
+
+@Composable
+private fun LibraryNoMatches(onClear: () -> Unit) {
+    MessageState(
+        message = stringResource(Res.string.library_no_matches),
+        actionLabel = stringResource(Res.string.library_clear_filters),
+        onAction = onClear,
+    )
 }
 
 /** One of the Library's folder rows: the page [item] opens, behind [icon]. */
@@ -416,6 +573,7 @@ fun LibraryGridPage(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     onNewPlaylist: (() -> Unit)? = null,
+    initialQuery: String = "",
 ) {
     // Re-read live rather than trusting [shelf] to already be sorted: this page
     // is opened from a snapshot (see `AppRoute.LibraryShowAll`), and a
@@ -424,10 +582,12 @@ fun LibraryGridPage(
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val librarySort by AppUi.host.librarySort.collectAsStateWithLifecycle()
     val recentlyPlayed by AppUi.host.libraryRecentlyPlayed.collectAsStateWithLifecycle()
+    var query by rememberSaveable(shelf.title) { mutableStateOf(initialQuery) }
     // Pinning wins over the default order, but an explicit sort is a stronger,
     // more deliberate signal than a pin and is left to reorder the whole grid,
     // pinned cards included.
     val sortedShelf = shelf.pinnedFirst(pinnedPlaylists).sortedForLibrary(librarySort, recentlyPlayed)
+    val matchingItems = remember(sortedShelf, query) { sortedShelf.items.matchingLibraryQuery(query) }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(
@@ -438,7 +598,19 @@ fun LibraryGridPage(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.padding(horizontal = PAGE_GUTTER),
         ) {
-            if (onNewPlaylist != null) {
+            item(key = "search", span = { GridItemSpan(maxLineSpan) }) {
+                LibrarySearchControls(
+                    query = query,
+                    onQueryChange = { query = it },
+                    contentPadding = PaddingValues(0.dp),
+                )
+            }
+            if (matchingItems.isEmpty() && query.isNotBlank()) {
+                item(key = "no_matches", span = { GridItemSpan(maxLineSpan) }) {
+                    LibraryNoMatches(onClear = { query = "" })
+                }
+            }
+            if (onNewPlaylist != null && query.isBlank()) {
                 item(key = "leading") {
                     NewShelfCard(
                         icon = BitChordIcons.Plus,
@@ -449,7 +621,7 @@ fun LibraryGridPage(
                     )
                 }
             }
-            items(sortedShelf.items, key = { it.browseId ?: it.title }) { item ->
+            items(matchingItems, key = { it.browseId ?: it.title }) { item ->
                 ShelfCard(
                     item = item,
                     onClick = { onItemClick(item) },

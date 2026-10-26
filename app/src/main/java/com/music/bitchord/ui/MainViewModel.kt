@@ -82,10 +82,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import com.music.bitchord.data.sources.AddonSource
 import com.music.bitchord.data.sources.SourceKind
 import com.music.bitchord.data.sources.SourceRegistry
+import com.music.bitchord.data.sources.NavidromeSource
+import com.music.bitchord.data.navidrome.NavidromeLibrary
+import com.music.bitchord.data.navidrome.withNavidromeAlbums
+import com.music.bitchord.data.LibrarySearchProvider
+import com.music.bitchord.data.searchLibraryCatalog
 import com.music.bitchord.data.sources.SourceResolver
 import com.music.bitchord.data.sources.TrackMatcher
 import com.music.bitchord.playback.AudioCache
@@ -567,7 +574,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val history: StateFlow<UiState<List<Song>>> = _history.asStateFlow()
 
     private val _library = MutableStateFlow<UiState<LibraryPage>>(UiState.Loading)
-    val library: StateFlow<UiState<LibraryPage>> = _library.asStateFlow()
+    private val _navidromeAlbums = MutableStateFlow<List<ShelfItem>>(emptyList())
+    val navidromeAlbums = _navidromeAlbums.asStateFlow()
+    private val _navidromeError = MutableStateFlow<String?>(null)
+    val navidromeError = _navidromeError.asStateFlow()
+    private val _navidromeLoading = MutableStateFlow(false)
+    val navidromeLoading = _navidromeLoading.asStateFlow()
+    private val navidromeRefreshMutex = Mutex()
+    val library: StateFlow<UiState<LibraryPage>> = combine(_library, _navidromeAlbums) { state, albums ->
+        when {
+            state is UiState.Success -> UiState.Success(state.data.withNavidromeAlbums(albums))
+            albums.isNotEmpty() -> UiState.Success(LibraryPage(emptyList(), emptyList(), emptyList()).withNavidromeAlbums(albums))
+            else -> state
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, UiState.Loading)
 
     /** In-memory cache is partitioned by account and profile; it is never shared. */
     private data class ListenerSnapshot(
@@ -879,6 +899,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         songMenuJob?.cancel()
         _songMenu.value = null
         if (videoId == null || !_signedIn.value) return
+        if (SourceRegistry.parseTrackKey(videoId)?.first?.let(SourceRegistry::config)?.kind == SourceKind.NAVIDROME) return
         songMenuJob = viewModelScope.launch {
             val menu = YtMusicRepository.songMenu(videoId).getOrNull() ?: return@launch
             _songMenu.value = menu
@@ -1431,6 +1452,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         startSearchPipeline()
         startSuggestPipeline()
         startTypeaheadMediaPipeline()
+        viewModelScope.launch {
+            SourceRegistry.configs.collectLatest { fetchNavidromeAlbums() }
+        }
         loadHome()
         loadExplore()
         if (_signedIn.value) {
@@ -1554,14 +1578,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refresh(feed: Feed) {
         if (feed in _refreshing.value) return
-        if (feed == Feed.LIBRARY && !_signedIn.value) return
         val identity = listenerKey()
         _refreshing.value = _refreshing.value + feed
         viewModelScope.launch {
             when (feed) {
                 Feed.HOME -> refreshHome(identity)
                 Feed.EXPLORE -> fetchExplore()
-                Feed.LIBRARY -> fetchLibrary(identity)
+                Feed.LIBRARY -> coroutineScope {
+                    val serverRefresh = async { fetchNavidromeAlbums() }
+                    if (_signedIn.value) fetchLibrary(identity)
+                    serverRefresh.await()
+                }
             }
             _refreshing.value = _refreshing.value - feed
         }
@@ -1779,6 +1806,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _library.value = UiState.Loading
         viewModelScope.launch { fetchLibrary(identity) }
     }
+
+    private suspend fun fetchNavidromeAlbums() = navidromeRefreshMutex.withLock {
+        _navidromeLoading.value = true
+        try {
+            val configs = SourceRegistry.configs.value
+            val previous = _navidromeAlbums.value
+            val failures = mutableListOf<String>()
+            val albums = NavidromeSource.active().flatMap { source ->
+                try {
+                    source.albums()
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    failures += source.displayName
+                    previous.filter { NavidromeLibrary.parseAlbum(it.browseId.orEmpty())?.sourceId == source.configId }
+                }
+            }
+            if (configs == SourceRegistry.configs.value) {
+                _navidromeAlbums.value = albums
+                _navidromeError.value = failures.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "Could not refresh: ")
+            }
+        } finally {
+            _navidromeLoading.value = false
+        }
+    }
+
+    suspend fun searchLibrarySources(query: String, filter: SearchFilter) = searchLibraryCatalog(
+        query, filter,
+        listOf(LibrarySearchProvider("YouTube Music") { q, f -> YtMusicRepository.search(q, f).getOrThrow() }) +
+            NavidromeSource.active().map { source -> LibrarySearchProvider(source.displayName, source::searchLibrary) },
+    )
 
     private suspend fun fetchLibrary(identity: String?) {
         val next = YtMusicRepository.library().fold(
@@ -2465,6 +2523,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
          */
 
         fun browseTypeOf(browseId: String, fallback: BrowseType = BrowseType.OTHER): BrowseType = when {
+            NavidromeLibrary.parseAlbum(browseId) != null -> BrowseType.ALBUM
+            NavidromeLibrary.parseArtist(browseId) != null -> BrowseType.ARTIST
             // Built for playlists, but an album downloaded whole opens through
             // the same prefix, and its page should read as the album it is.
             browseId.startsWith(Downloads.PLAYLIST_PREFIX) ->
@@ -2535,6 +2595,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.browseId == browseId && it.songs is UiState.Loading
             } == true
         ) return
+        val navidromeAlbum = NavidromeLibrary.parseAlbum(browseId)
+        val navidromeArtist = NavidromeLibrary.parseArtist(browseId)
+        val navidromeRef = navidromeAlbum ?: navidromeArtist
+        if (navidromeRef != null) {
+            _detailStack.value += DetailPage(
+                browseId, title, subtitle, thumbnailUrl, UiState.Loading,
+                type = if (navidromeAlbum != null) BrowseType.ALBUM else BrowseType.ARTIST,
+            )
+            viewModelScope.launch {
+                val page = try {
+                    val source = NavidromeSource.forRef(navidromeRef)
+                    if (navidromeAlbum != null) source.openAlbum(navidromeRef) else source.openArtist(navidromeRef)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    DetailPage(browseId, title, subtitle, thumbnailUrl, UiState.Error(failure.message ?: "Could not open this library item"))
+                }
+                _detailStack.value = _detailStack.value.map { if (it.browseId == browseId) page else it }
+            }
+            return
+        }
         if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return
@@ -3057,7 +3138,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         onResult: (Result<List<Song>>) -> Unit,
     ) {
         viewModelScope.launch {
-            val result = when (val local = localPageState(browseId)) {
+            val navidromeAlbum = NavidromeLibrary.parseAlbum(browseId)
+            val result = if (navidromeAlbum != null) runCatching {
+                (NavidromeSource.forRef(navidromeAlbum).openAlbum(navidromeAlbum).songs as UiState.Success).data
+            } else when (val local = localPageState(browseId)) {
                 is UiState.Success -> Result.success(local.data)
                 is UiState.Error -> Result.failure(IllegalStateException(local.message))
                 UiState.Loading -> Result.failure(IllegalStateException(text(R.string.no_tracks_here)))

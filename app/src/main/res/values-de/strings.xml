@@ -1380,4 +1380,10 @@
     <string name="song_info_unavailable">Nicht verfügbar</string>
     <string name="song_info_error">Einige Informationen konnten nicht geladen werden.</string>
     <string name="song_info_retry">Erneut versuchen</string>
+    <string name="add_navidrome">Navidrome hinzufügen</string>
+    <string name="navidrome_description">Verbinde deinen Navidrome- oder Subsonic-Server, um Alben zu durchsuchen, nach Künstlern zu suchen und eigene Dateien abzuspielen.</string>
+    <string name="navidrome_server_address">Serveradresse</string>
+    <string name="navidrome_keep_password">Passwort (leer lassen, um es beizubehalten)</string>
+    <string name="navidrome_name">Name (optional)</string>
+    <string name="lyrics_sync_to_audio">Mit Audio synchronisieren</string>
 </resources>

@@ -351,14 +351,11 @@ private val GAP_ROW_SPACING = 16.dp
 private val LINE_FALLOFF_ALPHA = floatArrayOf(1f, 0.42f, 0.28f, 0.2f, 0.16f)
 
 /**
- * How the lines already sung fall away above the playing one.
- *
- * Unlike the read-ahead falloff above, this one runs straight to nothing: a line
- * is fully gone the moment it is no longer the one being sung, rather than
- * lingering as a half-lit ghost. The lines ahead keep their gentler ramp, so
- * what is coming stays legible.
+ * Keep the previous two lyric lines readable, with the same near-line dimming
+ * as the upcoming words. Older lines fade to zero rather than disappearing
+ * as soon as the singing advances. Blur still increases with distance.
  */
-private val LINE_SUNG_ALPHA = floatArrayOf(1f, 0f)
+private val LINE_SUNG_ALPHA = floatArrayOf(1f, 0.42f, 0.28f, 0f)
 
 /**
  * How far a line defocuses per row of distance from the one being sung, and the
@@ -1783,7 +1780,7 @@ internal fun rememberPlayerControlsOnScroll(
  * API 31+, so alpha carries the same hierarchy on older devices.
  *
  * Scrolling by hand clears the blur and suspends the auto-follow, so you can
- * read ahead; a couple of seconds after you stop it snaps back to the song.
+ * read earlier or upcoming lines until you choose Sync to audio.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1865,10 +1862,10 @@ internal fun LyricsPanel(
         snapshotFlow { listState.isScrollInProgress }.collect(onScrollingChange)
     }
     val keepScroll = remember(listState) { keepScrollInList(listState) }
-    var browsingByDrag by remember { mutableStateOf(false) }
+    val lyricBrowsing = remember(trackKey) { LyricBrowsingState() }
     // While picking lines, the panel must not auto-scroll — the reader needs
     // the list to stay put so they can tap the lines they want.
-    val browsing = browsingByDrag || picking
+    val browsing = lyricBrowsing.isBrowsing || picking
     // The library flattens the whole depth of field while somebody scrolls the
     // panel by hand, so no row is being pointed at, and brings it back when the
     // panel resumes following the song. One shared animation drives every row's
@@ -1895,7 +1892,7 @@ internal fun LyricsPanel(
     val glowing = !reduceAnimation && !reduceDynamicBlur && lyricsBlur &&
         renderEffectBlurSupported
 
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, lyricBrowsing) {
         listState.interactionSource.interactions.collect { interaction ->
             if (interaction is DragInteraction.Start) {
                 // Suspends the panel's own following, and nothing more. Which
@@ -1903,7 +1900,7 @@ internal fun LyricsPanel(
                 // [controlsOnScroll] — and hiding here as well meant a
                 // scroll *up*, the gesture that is supposed to bring them back,
                 // put them away first and then returned them.
-                browsingByDrag = true
+                lyricBrowsing.browse()
             }
         }
     }
@@ -1925,28 +1922,6 @@ internal fun LyricsPanel(
         onHide = onHideControls,
     )
 
-    val currentLine by rememberUpdatedState(focusLine)
-    val activeOnScreen by remember(listState) {
-        derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo.any { it.index == currentLine }
-        }
-    }
-    // Paused, there is no song to follow back to, so a hand scroll should sit
-    // wherever it was left rather than snapping back on these timers.
-    LaunchedEffect(browsingByDrag, activeOnScreen, listState.isScrollInProgress, panelPlaying) {
-        if (panelPlaying && browsingByDrag && activeOnScreen && !listState.isScrollInProgress) {
-            delay(600)
-            browsingByDrag = false
-        }
-    }
-
-    LaunchedEffect(browsingByDrag, listState.isScrollInProgress, panelPlaying) {
-        if (panelPlaying && browsingByDrag && !listState.isScrollInProgress) {
-            delay(5_000)
-            browsingByDrag = false
-        }
-    }
-
     // The panel's own journey, published so each row can work out how far
     // behind it should be running. Held as a plain value plus a frame clock
     // rather than an animation per row: sixty rows each with their own
@@ -1965,12 +1940,8 @@ internal fun LyricsPanel(
     // every line while the reader's place in the song is unchanged, and a reset
     // here would snap the panel back to the top mid-read.
     var placed by remember(trackKey) { mutableStateOf(false) }
-    // Nothing resets [browsing] off [controlsOpen] any more. It used to, so
-    // that tapping the controls back resumed following — but the controls now
-    // also come back by scrolling up, and clearing the flag there handed the
-    // panel straight back to the song mid-gesture, scrolling the reader away
-    // from the line they had gone looking for. The two timers below end a
-    // browse on their own terms.
+    // Browsing remains paused until Sync to audio is tapped, even as the
+    // clock advances or controls are revealed. Picking also keeps the list still.
     // A newer line replaces an unfinished automatic scroll. Only a user's
     // browsing gesture should suspend following, not our own animation.
     LaunchedEffect(focusLine, browsing, controlsOpen, active) {
@@ -2043,6 +2014,7 @@ internal fun LyricsPanel(
         modifier = Modifier
             .fillMaxSize()
             .bleedHorizontally(PLAYER_GUTTER)
+            .nestedScroll(lyricBrowsing)
             .nestedScroll(controlsOnScroll)
             .nestedScroll(keepScroll)
             // Browsing leaves taps to each lyric row's seek action throughout
@@ -2412,7 +2384,7 @@ internal fun LyricsPanel(
                             now >= backing.timeMs - BACKING_LEAD_MS && now < backing.endMs
                         }
                     }
-                    val wanted = !isSynced || picking || if (backing.isWordSynced) {
+                    val wanted = !isSynced || browsing || if (backing.isWordSynced) {
                         due
                     } else {
                         isActive || index == focusLine
@@ -2546,6 +2518,12 @@ internal fun LyricsPanel(
                 }
             }
         }
+    }
+    if (isSynced && lyricBrowsing.isBrowsing && !picking) {
+        LyricsSyncButton(
+            onClick = lyricBrowsing::syncToAudio,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+        )
     }
     }
 }

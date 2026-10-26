@@ -207,4 +207,25 @@
     <string name="import_spotify">Import Spotify</string>
     <string name="import_spotify_subtitle">From a playlist link</string>
     <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="shuffle_off_tooltip">Shuffle is off. Turn it on to play upcoming songs in a random order.</string>
+    <string name="shuffle_on_tooltip">Shuffle is on: upcoming songs play in a random order. Turn shuffle off.</string>
+    <string name="repeat_off_tooltip">Repeat is off. Repeat the entire queue.</string>
+    <string name="repeat_all_tooltip">Repeating the queue. Repeat only the current song.</string>
+    <string name="repeat_one_tooltip">Repeating the current song. Turn repeat off.</string>
+    <string name="autoplay_off_tooltip">AutoPlay is off. Turn it on to keep playing similar music when the queue ends.</string>
+    <string name="autoplay_on_tooltip">AutoPlay is on: similar music keeps playing after your queue. Turn AutoPlay off.</string>
+    <string name="show_queue_tooltip">Show upcoming songs and manage the queue.</string>
+    <string name="hide_queue_tooltip">Hide the upcoming songs.</string>
+    <string name="audio_output_tooltip">Choose the speaker, headphones or device used for playback.</string>
+    <string name="listen_together_tooltip">Start or join a listening party to play music together.</string>
+    <string name="listen_together_members_tooltip">Show the %1$d people in your listening party.</string>
+    <string name="library_search_hint">Search your library</string>
+    <string name="library_filter_all">All</string>
+    <string name="library_filter_podcasts">Podcasts</string>
+    <string name="library_no_matches">No library items match your search or filters.</string>
+    <string name="library_clear_filters">Clear search and filters</string>
+    <string name="library_refresh">Refresh library</string>
+    <string name="library_refresh_tooltip">Refetch saved collections and albums from your connected music sources.</string>
+    <string name="library_source_search_failed">Couldn’t search: %1$s. Other available results are shown.</string>
+    <string name="lyrics_sync_to_audio">Sync to audio</string>
 </resources>

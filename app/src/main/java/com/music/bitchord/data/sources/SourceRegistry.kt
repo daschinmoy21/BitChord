@@ -51,6 +51,10 @@ data class SourceConfig(
      * already break that. Refreshed whenever the manifest is next read.
      */
     val checkValidLossless: Boolean = false,
+    /** Navidrome stores a salted token in these encrypted preferences, never a password. */
+    val username: String = "",
+    val salt: String = "",
+    val token: String = "",
 ) {
     /** Whether this source is shut out right now because it needs an output that isn't connected. */
     val awaitsLosslessOutput: Boolean
@@ -70,7 +74,8 @@ data class SourceConfig(
 
     /** Whether this has enough filled in to be worth contacting at all. */
     val isComplete: Boolean
-        get() = !kind.needsServer || baseUrl.isNotBlank()
+        get() = (!kind.needsServer || baseUrl.isNotBlank()) &&
+            (kind != SourceKind.NAVIDROME || username.isNotBlank() && salt.isNotBlank() && token.isNotBlank())
 }
 
 /**
@@ -452,6 +457,7 @@ object SourceRegistry {
     suspend fun probeCandidate(config: SourceConfig): SourceHealth = build(config).health()
 
     private fun build(config: SourceConfig): MusicSource = when (config.kind) {
+        SourceKind.NAVIDROME -> NavidromeSource(config)
         SourceKind.ADDON -> AddonSource(config)
         // Same protocol, same implementation — the kinds differ only in rank.
         SourceKind.CUSTOM_MODULE -> ModuleSource(config)

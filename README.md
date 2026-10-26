@@ -128,6 +128,19 @@ On Android, long-press a song or open its **⋮** menu and choose **Share**. In 
 then **Save** the card to your gallery or **Share** it through Android's share sheet. Cards are
 1080 × 1920 PNGs without app branding. Song cards also offer **Share link**.
 
+### Searching your library
+
+On desktop and Android, Library has search and filters for playlists, albums, artists,
+podcasts and on-device collections. Search matches collection names and artist credits,
+and also queries YouTube Music and enabled Navidrome servers. Results are grouped by source.
+The refresh button beside search refetches saved collections and Navidrome albums.
+
+On Android, open **Settings → Sources → Add Navidrome** to connect your server. Enter its
+address, username and password, then test and save. Albums appear in Library even when
+signed out of YouTube; artist search results open the artist’s albums. The saved login
+uses a salted token in encrypted preferences. Production Android builds require HTTPS;
+the Dev build also permits HTTP servers on your local network.
+
 </div>
 
 ---

@@ -37,6 +37,10 @@ import com.music.bitchord.ui.screens.CompactTrackRow
 import com.music.bitchord.ui.screens.LibraryGridPage
 import com.music.bitchord.ui.screens.LibraryLink
 import com.music.bitchord.ui.screens.LibraryScreen
+import com.music.bitchord.ui.screens.rememberLibrarySearchState
+import com.music.bitchord.data.LibrarySearchProvider
+import com.music.bitchord.data.searchLibraryCatalog
+import com.music.bitchord.data.navidrome.NavidromeLibrary
 import com.music.bitchord.ui.screens.MoodGenrePlaylistsScreen
 import com.music.bitchord.ui.screens.SearchScreen
 import com.music.bitchord.data.NerdStats
@@ -603,6 +607,7 @@ fun BitChordDesktopApp() {
     val libraryGridState = rememberLazyGridState()
     /** A Library shelf's "Show all", open as a grid in place of the page. */
     var libraryShowAll by remember { mutableStateOf<HomeShelf?>(null) }
+    val librarySearchState = rememberLibrarySearchState()
     /** Where the one back button in the top bar goes: every place visited, oldest first. */
     val navHistory = remember { mutableStateListOf<DesktopNavEntry>() }
     /** Set while [goBack] puts a place back, so that move is not itself recorded as a visit. */
@@ -755,6 +760,8 @@ fun BitChordDesktopApp() {
     val activeAccount = accounts.firstOrNull { it.accountId == activeAccountId } ?: accounts.firstOrNull()
     // The account's own library, fetched once a session is in force.
     var libraryState by remember { mutableStateOf<UiState<LibraryPage>>(UiState.Loading) }
+    var serverAlbumsLoading by remember { mutableStateOf(false) }
+    var serverAlbumsError by remember { mutableStateOf<String?>(null) }
     // Whether YouTube is actually accepting the session, which is not the same as having an account
     // saved.
     var youtubeSignedIn by remember { mutableStateOf(false) }
@@ -822,9 +829,18 @@ fun BitChordDesktopApp() {
             }.getOrDefault(DesktopAlbumSourceFilter.ALL),
         )
     }
-    LaunchedEffect(sourceConfigs) {
-        serverAlbums = withContext(Dispatchers.IO) {
-            DesktopNavidromeSource.libraryAlbums(sourceConfigs)
+    LaunchedEffect(sourceConfigs, sessionRevision) {
+        serverAlbumsLoading = true
+        val failures = mutableListOf<DesktopSourceConfig>()
+        try {
+            val fresh = withContext(Dispatchers.IO) {
+                DesktopNavidromeSource.libraryAlbums(sourceConfigs) { failures += it }
+            }
+            val failedIds = failures.map { it.id }.toSet()
+            serverAlbums = fresh + serverAlbums.filter { NavidromeLibrary.parseAlbum(it.browseId.orEmpty())?.sourceId in failedIds }
+            serverAlbumsError = failures.takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = "Could not refresh: ") { it.displayName }
+        } finally {
+            serverAlbumsLoading = false
         }
     }
     val renderedLibrary = remember(libraryState, serverAlbums) {
@@ -2037,6 +2053,7 @@ fun BitChordDesktopApp() {
         // Only while the player is up, so playing from the mini player costs
         // nothing, and only when something is actually missing.
         if (!overlays.nowPlaying) return@LaunchedEffect
+        if (DesktopNavidromeSource.parseTrack(current.videoId) != null) return@LaunchedEffect
         if (current.artistId != null && current.albumId != null) return@LaunchedEffect
         trackLinks = DesktopSearchClient.trackLinks(current.videoId).getOrNull()
     }
@@ -2183,7 +2200,10 @@ fun BitChordDesktopApp() {
     LaunchedEffect(openedArtist, artistReloads) {
         val target = openedArtist ?: return@LaunchedEffect
         if (artistState !is UiState.Loading) return@LaunchedEffect
-        DesktopSearchClient.artistPage(target.browseId).fold(
+        val serverArtist = NavidromeLibrary.parseArtist(target.browseId)
+        val loaded = if (serverArtist != null) DesktopNavidromeSource.openLibraryArtist(serverArtist)
+            else DesktopSearchClient.artistPage(target.browseId)
+        loaded.fold(
             onSuccess = { artistState = UiState.Success(it) },
             onFailure = { artistState = UiState.Error(it.message ?: "Could not open ${target.name}") },
         )
@@ -2438,6 +2458,11 @@ fun BitChordDesktopApp() {
 
     /** A Library card: a folder is a page of this app's, a local playlist is opened from here. */
     fun openLibraryItem(item: ShelfItem) {
+        val serverSong = item.videoId?.let(DesktopNavidromeSource::rememberedSong)
+        if (serverSong != null) {
+            playSong(serverSong, source = DesktopQueueSource("Library", PlaybackSourceType.SEARCH))
+            return
+        }
         val browseId = item.browseId.orEmpty()
         when {
             browseId == "spotify:library" -> selectDestination(DesktopDestination.SPOTIFY)
@@ -4428,6 +4453,7 @@ fun BitChordDesktopApp() {
                                 DesktopLibrarySortMenu()
                             }
                             LibraryGridPage(
+                                initialQuery = librarySearchState.collectionQuery,
                                 shelf = if (canFilterAlbums) openShelf.filteredBySource(albumSourceFilter) else openShelf,
                                 gridState = libraryGridState,
                                 onItemClick = ::openLibraryItem,
@@ -4439,6 +4465,23 @@ fun BitChordDesktopApp() {
                             )
                         }
                         destination == DesktopDestination.LIBRARY -> LibraryScreen(
+                            searchState = librarySearchState,
+                            searchCatalog = { q, f ->
+                                val providers = buildList {
+                                    if (youtubeSourceEnabled) add(LibrarySearchProvider("YouTube Music") { term, type ->
+                                        YtMusicRepository.search(term, type).getOrThrow()
+                                    })
+                                    sourceConfigs.filter { it.kind == DesktopSourceKind.NAVIDROME && it.enabled && it.isComplete }
+                                        .forEach { config ->
+                                            add(LibrarySearchProvider(config.displayName) { term, type ->
+                                                DesktopNavidromeSource.searchLibrary(config, term, type)
+                                            })
+                                        }
+                                }
+                                searchLibraryCatalog(q, f, providers)
+                            },
+                            searchRevision = listOf(sourceConfigs, sessionRevision),
+                            sourceError = serverAlbumsError,
                             signedIn = youtubeSignedIn,
                             state = renderedLibrary,
                             listState = libraryListState,
@@ -4473,7 +4516,7 @@ fun BitChordDesktopApp() {
                             },
                             onSignIn = { overlays.accounts = true },
                             onRetry = ::reloadLibrary,
-                            refreshing = false,
+                            refreshing = libraryState is UiState.Loading || serverAlbumsLoading,
                             onRefresh = ::reloadLibrary,
                             pullState = rememberPullToRefreshState(),
                             contentPadding = sharedPagePadding,
