@@ -74,6 +74,12 @@ kotlin {
         // See CMP_DESKTOP above.
         jvmMain.dependencies {
             api("org.jetbrains.compose.ui:ui-desktop:$CMP_DESKTOP")
+            // The same compile/runtime split as ui-desktop: haze-materials 1.7.x
+            // (both OSes) pulls material3 1.9.0 into the desktop graph, and
+            // PlainTooltip's mangled signature changed after 1.7.3, so bytecode
+            // compiled against 1.7.3 NoSuchMethodError'd the first time a
+            // ControlTooltip composed.
+            api("org.jetbrains.compose.material3:material3:1.9.0")
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
