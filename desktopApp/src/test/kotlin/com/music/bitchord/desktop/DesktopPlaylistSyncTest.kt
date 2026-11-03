@@ -80,4 +80,35 @@ class DesktopPlaylistSyncTest {
         } finally { node.removeNode() }
     }
 
+    @Test fun deletingADownloadDoesNotExcludeItFromUnrelatedPlaylists() {
+        val member = DesktopPlaylistSyncRecord("VLa", "A", "youtube:a", songIds = listOf("deleted"))
+        val unrelated = DesktopPlaylistSyncRecord("VLb", "B", "youtube:a", songIds = listOf("other"))
+        assertEquals(setOf("deleted"), member.ignoreDownload("deleted").ignoredIds)
+        assertEquals(unrelated, unrelated.ignoreDownload("deleted"))
+        assertEquals(emptySet(), unrelated.ignoreDownload("deleted").copy(songIds = listOf("deleted")).ignoredIds)
+    }
+
+    @Test fun writerShutdownReturnsWhenStorageStallsAndRepeatedCloseDoesNotWaitAgain() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val writer = DesktopLibraryWriter(
+            save = { _, _ -> entered.countDown(); release.await() },
+            shutdownTimeoutMs = 50,
+        )
+        try {
+            writer.submit(DesktopLibrarySnapshot(emptyList(), emptyList(), emptyList()))
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            val before = System.nanoTime()
+            writer.close()
+            writer.close()
+            assertTrue((System.nanoTime() - before) / 1_000_000 < 2_000)
+        } finally { release.countDown(); writer.close() }
+    }
+
+    @Test fun aThrowingSaveDoesNotPreventWriterShutdown() {
+        val writer = DesktopLibraryWriter(save = { _, _ -> error("storage failed") })
+        writer.submit(DesktopLibrarySnapshot(emptyList(), emptyList(), emptyList()))
+        writer.close()
+    }
+
 }

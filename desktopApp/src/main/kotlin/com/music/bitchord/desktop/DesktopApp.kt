@@ -1471,7 +1471,7 @@ fun BitChordDesktopApp() {
     /** Deletes the file a download saved and forgets the record. */
     fun removeDownload(song: Song) {
         syncedPlaylists = syncedPlaylists.map {
-            it.copy(ignoredIds = it.ignoredIds + song.videoId)
+            it.ignoreDownload(song.videoId)
         }
 
         scope.launch {

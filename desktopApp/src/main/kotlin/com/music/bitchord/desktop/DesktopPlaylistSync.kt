@@ -21,6 +21,9 @@ internal data class DesktopPlaylistSyncRecord(
     val enabled: Boolean = true,
     val approvedIds: Set<String> = emptySet(),
 ) {
+    fun ignoreDownload(videoId: String): DesktopPlaylistSyncRecord =
+        if (videoId in songIds) copy(ignoredIds = ignoredIds + videoId) else this
+
     fun offlinePlaylist(downloads: List<Song>): DesktopPlaylist {
         val saved = downloads.associateBy { it.videoId }
         return DesktopPlaylist(
