@@ -65,6 +65,9 @@ data class NavidromeResponse(
     val albumList2: NavidromeAlbumList? = null,
     val album: NavidromeAlbum? = null,
     val artist: NavidromeArtist? = null,
+    val playlists: NavidromePlaylists? = null,
+    val playlist: NavidromePlaylist? = null,
+    val starred2: NavidromeSearchResult? = null,
 )
 
 @Serializable
@@ -75,6 +78,19 @@ data class NavidromeSearchResult(
     val song: List<NavidromeSong> = emptyList(),
     val album: List<NavidromeAlbum> = emptyList(),
     val artist: List<NavidromeArtist> = emptyList(),
+)
+
+@Serializable
+data class NavidromePlaylists(val playlist: List<NavidromePlaylist> = emptyList())
+
+@Serializable
+data class NavidromePlaylist(
+    val id: String = "",
+    val name: String = "",
+    val songCount: Int = 0,
+    val owner: String = "",
+    val coverArt: String? = null,
+    val entry: List<NavidromeSong> = emptyList(),
 )
 
 @Serializable
@@ -178,6 +194,20 @@ class NavidromeClient(
     suspend fun album(id: String): Result<NavidromeAlbum> =
         call("getAlbum", "id" to id).mapCatching {
             it.album ?: throw NavidromeException(70, "album not found")
+        }
+
+    suspend fun playlists(): Result<List<NavidromePlaylist>> =
+        call("getPlaylists").map { it.playlists?.playlist.orEmpty() }
+
+    suspend fun starredSongs(): Result<List<NavidromeSong>> =
+        call("getStarred2").map { it.starred2?.song.orEmpty() }
+
+    suspend fun setStarred(id: String, starred: Boolean): Result<Unit> =
+        call(if (starred) "star" else "unstar", "id" to id).map { }
+
+    suspend fun playlist(id: String): Result<NavidromePlaylist> =
+        call("getPlaylist", "id" to id).mapCatching {
+            it.playlist ?: throw NavidromeException(70, "playlist not found")
         }
 
     suspend fun artist(id: String): Result<NavidromeArtist> =

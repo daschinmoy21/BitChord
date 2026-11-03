@@ -144,6 +144,8 @@ fun LibraryScreen(
     searchCatalog: (suspend (String, SearchFilter) -> LibraryCatalogResult)? = null,
     searchRevision: Any? = null,
     sourceError: String? = null,
+    /** Platform-specific playlist browser displayed alongside the playlist shelf. */
+    playlistBrowser: @Composable () -> Unit = {},
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
@@ -259,6 +261,7 @@ fun LibraryScreen(
                         onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                         onShowAll = { searchState.collectionQuery = ""; onShowAll(emptyPlaylists) },
                     )
+                    playlistBrowser()
                 }
             }
             shelves.forEach { shelf ->
@@ -274,6 +277,7 @@ fun LibraryScreen(
                             onShowAll = { openShelf(shelf) },
                             pinnedPlaylists = pinnedPlaylists,
                         )
+                        playlistBrowser()
                     } else {
                         LibraryGridShelf(
                             shelf = pinnedFirst,

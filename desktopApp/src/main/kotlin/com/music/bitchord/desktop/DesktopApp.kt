@@ -206,6 +206,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -652,6 +653,7 @@ fun BitChordDesktopApp() {
     var dislikedIds by remember { mutableStateOf(persistence.dislikedIds()) }
     val overlays = remember { DesktopOverlays() }
     var downloads by remember { mutableStateOf(persistence.downloads()) }
+    var downloadsVerified by remember { mutableStateOf(false) }
     // A play from search or the radio has no localPath. The download list is what says the file
     // is already in the user's folder.
     DesktopDownloadManager.libraryLookup = {
@@ -661,6 +663,28 @@ fun BitChordDesktopApp() {
     val downloadQueue by DesktopDownloadQueue.active.collectAsState()
     val downloadInProgress = downloadQueue.keys
     var playlists by remember { mutableStateOf(persistence.playlists()) }
+    var syncedPlaylists by remember { mutableStateOf(persistence.syncedPlaylists()) }
+    val libraryWriter = remember(persistence) { DesktopLibraryWriter(persistence) }
+    DisposableEffect(libraryWriter) { onDispose { libraryWriter.close() } }
+    LaunchedEffect(downloads, playlists, syncedPlaylists) {
+        libraryWriter.submit(DesktopLibrarySnapshot(downloads, playlists, syncedPlaylists))
+    }
+    val syncQueuedByRecord = remember { mutableMapOf<String, Set<String>>() }
+    LaunchedEffect(Unit) {
+        DesktopDownloadQueue.cancelled.collect { cancelled ->
+            if (cancelled.isNotEmpty()) {
+                syncedPlaylists = syncedPlaylists.map { record ->
+                    val ignored = record.ignoredIds + cancelled.intersect(record.songIds.toSet())
+                    if (ignored == record.ignoredIds) record else record.copy(ignoredIds = ignored)
+                }
+            }
+        }
+    }
+    val playlistSyncApprovalCounts = remember { mutableStateMapOf<String, Int>() }
+    val playlistSyncErrors = remember { mutableStateMapOf<String, String>() }
+    val playlistSyncBusy = remember { mutableStateMapOf<String, Boolean>() }
+    var playlistSyncRevision by remember { mutableStateOf(0) }
+    var approvedPlaylistSyncs by remember { mutableStateOf(emptySet<String>()) }
     var statsRevision by remember { mutableStateOf(0L) }
     var replayPeriod by remember { mutableStateOf(DesktopReplayPeriod.ALL_TIME) }
     val replayHolder = remember { DesktopAccounts.active()?.name.orEmpty() }
@@ -821,6 +845,103 @@ fun BitChordDesktopApp() {
     }
     var audioQuality by remember { mutableStateOf(persistence.audioQuality()) }
     var sourceConfigs by remember { mutableStateOf(persistence.sourceConfigs()) }
+    val playlistSyncIdentity = "youtube:${activeAccountId.orEmpty()}:${activeProfileId.orEmpty()}"
+    LaunchedEffect(
+        syncedPlaylists.map { it.localPlaylistId to it.enabled }, playlistSyncRevision, sessionRevision,
+        playlistSyncIdentity, sourceConfigs, downloadsVerified,
+    ) {
+        if (!downloadsVerified || syncedPlaylists.none { it.enabled }) return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            for (record in syncedPlaylists.toList()) {
+                if (!canSyncPlaylist(record, playlistSyncIdentity, DesktopYouTubeAuth.isSignedIn)) {
+                    approvedPlaylistSyncs = approvedPlaylistSyncs - record.localPlaylistId
+                    continue
+                }
+                playlistSyncBusy[record.localPlaylistId] = true
+                try {
+                    val loaded = loadPlaylistForSync(record.browseId)
+                    val latest = syncedPlaylists.firstOrNull { it.localPlaylistId == record.localPlaylistId && it.enabled } ?: continue
+                    val approved = record.localPlaylistId in approvedPlaylistSyncs
+                    val plan = planPlaylistSync(latest, loaded.songs, downloads, DesktopDownloadQueue.active.value, approved)
+                    val updated = latest.copy(
+                        title = loaded.title.ifBlank { latest.title },
+                        songIds = loaded.songs.map { it.videoId },
+                        lastChecked = System.currentTimeMillis(),
+                        approvedIds = latest.approvedIds + if (plan.needsApproval) emptySet() else plan.downloads.map { it.videoId }.toSet(),
+                    )
+                    syncedPlaylists = syncedPlaylists.map { if (it.localPlaylistId == updated.localPlaylistId) updated else it }
+
+                    if (plan.needsApproval) {
+                        playlistSyncApprovalCounts[record.localPlaylistId] = plan.downloads.size
+                        playlistSyncErrors.remove(record.localPlaylistId)
+                    } else {
+                        playlistSyncErrors.remove(record.localPlaylistId)
+                        playlistSyncApprovalCounts.remove(record.localPlaylistId)
+                        syncQueuedByRecord[record.localPlaylistId] =
+                            syncQueuedByRecord[record.localPlaylistId].orEmpty() + plan.downloads.map { it.videoId }
+                        DesktopDownloadQueue.enqueueAll(plan.downloads, automatic = true)
+                    }
+                    approvedPlaylistSyncs = approvedPlaylistSyncs - record.localPlaylistId
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    playlistSyncErrors[record.localPlaylistId] = failure.message ?: "Could not sync playlist. Will retry automatically."
+                } finally {
+                    approvedPlaylistSyncs = approvedPlaylistSyncs - record.localPlaylistId
+                    playlistSyncBusy.remove(record.localPlaylistId)
+                }
+            }
+            delay(PLAYLIST_SYNC_INTERVAL_MS)
+        }
+    }
+    LaunchedEffect(syncedPlaylists, downloads) {
+        // Ordered offline copies contain only completed files. Removing a song online changes the
+        // playlist, but its audio remains available in Downloads and in other playlists.
+        var next = playlists
+        for (record in syncedPlaylists) {
+            val offline = record.offlinePlaylist(downloads)
+            val at = next.indexOfFirst { it.id == offline.id }
+            if (at < 0) next = next + offline
+            else if (next[at] != offline) next = next.toMutableList().apply { this[at] = offline }
+        }
+        if (next != playlists) {
+            playlists = next
+        }
+    }
+    var serverPlaylists by remember { mutableStateOf(emptyList<DesktopNavidromeSource.ServerPlaylist>()) }
+    var serverPlaylistsLoading by remember { mutableStateOf(true) }
+    var serverPlaylistsError by remember { mutableStateOf<String?>(null) }
+    var serverPlaylistsRevision by remember { mutableStateOf(0) }
+    LaunchedEffect(sourceConfigs, sessionRevision, serverPlaylistsRevision) {
+        val servers = sourceConfigs.filter { it.kind == DesktopSourceKind.NAVIDROME && it.enabled && it.isComplete }
+        val activeIds = servers.map { it.id }.toSet()
+        serverPlaylists = serverPlaylists.filter { it.source.id in activeIds }
+        while (currentCoroutineContext().isActive) {
+            serverPlaylistsLoading = true
+            try {
+                val fresh = mutableListOf<DesktopNavidromeSource.ServerPlaylist>()
+                val failed = mutableListOf<DesktopSourceConfig>()
+                for (server in servers) {
+                    try {
+                        fresh += DesktopNavidromeSource.playlists(server)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        failed += server
+                    }
+                }
+                val failedIds = failed.map { it.id }.toSet()
+                serverPlaylists = (fresh + serverPlaylists.filter { it.source.id in failedIds })
+                    .sortedWith(compareBy({ it.source.displayName.lowercase() }, { it.playlist.name.lowercase() }))
+                serverPlaylistsError = failed.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ", prefix = "Could not refresh: ") { it.displayName }
+            } finally {
+                serverPlaylistsLoading = false
+            }
+            if (servers.isEmpty()) break
+            delay(NAVIDROME_PLAYLIST_REFRESH_MS)
+        }
+    }
     var serverAlbums by remember { mutableStateOf<List<ShelfItem>>(emptyList()) }
     var albumSourceFilter by remember {
         mutableStateOf(
@@ -874,6 +995,19 @@ fun BitChordDesktopApp() {
     var collectionLoadingMore by remember { mutableStateOf(false) }
     var collectionError by remember { mutableStateOf<String?>(null) }
     var collectionReloads by remember { mutableStateOf(0) }
+    LaunchedEffect(playlists, syncedPlaylists, openedCollection?.browseId) {
+        val open = openedCollection
+        if (open != null && syncedPlaylists.any { it.localPlaylistId == open.browseId }) {
+            playlists.firstOrNull { it.id == open.browseId }?.let { offline ->
+                openedCollection = open.copy(
+                    title = offline.title,
+                    subtitle = "Playlist • ${offline.songs.size} songs",
+                    thumbnailUrl = offline.songs.firstOrNull()?.thumbnailUrl,
+                    songs = offline.songs,
+                )
+            }
+        }
+    }
     // The artist page is its own destination rather than a collection with a different header.
     var openedArtist by remember { mutableStateOf<DesktopArtistTarget?>(null) }
     var artistState by remember { mutableStateOf<UiState<ArtistPage>>(UiState.Loading) }
@@ -1038,8 +1172,55 @@ fun BitChordDesktopApp() {
     }
     startSong = ::playSong
 
-    /** Applies a rating locally and carries it to the account. */
+    var pendingNavidromeRatings by remember { mutableStateOf(emptySet<String>()) }
+    var navidromeRatingRevision by remember { mutableStateOf(0) }
+    LaunchedEffect(sourceConfigs, sessionRevision) {
+        while (currentCoroutineContext().isActive) {
+            for (config in sourceConfigs.filter { it.kind == DesktopSourceKind.NAVIDROME && it.enabled && it.isComplete }) {
+                val revision = navidromeRatingRevision
+                try {
+                    val starred = DesktopNavidromeSource.starredIds(config)
+                    val migrationKey = "navidrome_stars_migrated:${config.id}"
+                    val migrated = withContext(Dispatchers.IO) { persistence.boolean(migrationKey, false) }
+                    if (!migrated) {
+                        val local = likedIds.filter {
+                            DesktopNavidromeSource.parseTrack(it)?.sourceId == config.id
+                        }.toSet()
+                        for (id in local - starred) {
+                            if (revision != navidromeRatingRevision) break
+                            if (id !in pendingNavidromeRatings && id in likedIds) {
+                                DesktopNavidromeSource.setStarred(DesktopNavidromeSource.parseTrack(id)!!, true).getOrThrow()
+                            }
+                        }
+                        if (revision != navidromeRatingRevision) continue
+                        withContext(Dispatchers.IO) { persistence.saveBoolean(migrationKey, true) }
+                    }
+                    // A response started before a click must not overwrite its optimistic heart.
+                    if (revision == navidromeRatingRevision) {
+                        val fresh = mergeNavidromeFavourites(
+                            likedIds, starred, config.id, pendingNavidromeRatings, migrateLegacy = !migrated,
+                        )
+                        if (fresh != likedIds) {
+                            likedIds = fresh
+                            withContext(Dispatchers.IO) { persistence.saveLikedIds(fresh) }
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Keep the cached hearts when a server is offline.
+                }
+            }
+            delay(5 * 60_000L)
+        }
+    }
+
+    /** Applies a rating locally and carries it to the track's own service. */
     fun rate(song: Song, status: LikeStatus) {
+        val navidrome = DesktopNavidromeSource.parseTrack(song.videoId)
+        if (navidrome != null && song.videoId in pendingNavidromeRatings) return
+        val wasLiked = song.videoId in likedIds
+        val wasDisliked = song.videoId in dislikedIds
         likedIds = if (status == LikeStatus.LIKE) likedIds + song.videoId else likedIds - song.videoId
         dislikedIds = if (status == LikeStatus.DISLIKE) {
             dislikedIds + song.videoId
@@ -1048,6 +1229,25 @@ fun BitChordDesktopApp() {
         }
         persistence.saveLikedIds(likedIds)
         persistence.saveDislikedIds(dislikedIds)
+        if (navidrome != null) {
+            pendingNavidromeRatings = pendingNavidromeRatings + song.videoId
+            navidromeRatingRevision++
+            scope.launch {
+                try {
+                    DesktopNavidromeSource.setStarred(navidrome, status == LikeStatus.LIKE).onFailure { failure ->
+                        likedIds = if (wasLiked) likedIds + song.videoId else likedIds - song.videoId
+                        dislikedIds = if (wasDisliked) dislikedIds + song.videoId else dislikedIds - song.videoId
+                        persistence.saveLikedIds(likedIds)
+                        persistence.saveDislikedIds(dislikedIds)
+                        overlays.notice = "Could not update Navidrome favourite: ${failure.message}"
+                    }
+                } finally {
+                    pendingNavidromeRatings = pendingNavidromeRatings - song.videoId
+                    navidromeRatingRevision++
+                }
+            }
+            return
+        }
         scope.launch {
             DesktopSearchClient.rate(song.videoId, status)
                 .onFailure { DesktopTrackLog.log("youtube: rating ${song.videoId} failed: ${it.message}") }
@@ -1173,6 +1373,7 @@ fun BitChordDesktopApp() {
     LaunchedEffect(openedCollection?.browseId, openedCollection?.loading, collectionReloads) {
         val pending = openedCollection?.takeIf { it.loading } ?: return@LaunchedEffect
         collectionError = null
+        if (DesktopNavidromeSource.parsePlaylist(pending.browseId) != null) return@LaunchedEffect
         val navidromeAlbum = DesktopNavidromeSource.parseAlbum(pending.browseId)
         if (navidromeAlbum != null) {
             val loaded = withContext(Dispatchers.IO) {
@@ -1205,6 +1406,28 @@ fun BitChordDesktopApp() {
         )
     }
 
+    // Keep the open server playlist current as well as the dropdown's names and counts.
+    LaunchedEffect(openedCollection?.browseId, sourceConfigs, sessionRevision, collectionReloads) {
+        val id = openedCollection?.browseId ?: return@LaunchedEffect
+        val ref = DesktopNavidromeSource.parsePlaylist(id) ?: return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            try {
+                val loaded = DesktopNavidromeSource.openPlaylist(ref)
+                if (openedCollection?.browseId == id) {
+                    openedCollection = loaded
+                    collectionError = null
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (openedCollection?.browseId == id) {
+                    collectionError = failure.message ?: "Could not refresh this playlist"
+                }
+            }
+            delay(NAVIDROME_PLAYLIST_REFRESH_MS)
+        }
+    }
+
     fun openAlbum(browseId: String) = openCollection(browseId)
 
     /** Opens the share sheet: the song as a story card, and its link. */
@@ -1219,6 +1442,7 @@ fun BitChordDesktopApp() {
      */
     fun shareCollection(collection: DesktopCollection) {
         if (DesktopNavidromeSource.parseAlbum(collection.browseId) != null) return
+        if (DesktopNavidromeSource.parsePlaylist(collection.browseId) != null) return
         val id = collection.browseId
         val url = when (collection.type) {
             BrowseType.PLAYLIST -> "https://music.youtube.com/playlist?list=${id.removePrefix("VL")}"
@@ -1230,6 +1454,11 @@ fun BitChordDesktopApp() {
     }
 
     fun downloadSong(song: Song) {
+        syncQueuedByRecord.replaceAll { _, ids -> ids - song.videoId }
+        if (syncedPlaylists.any { song.videoId in it.ignoredIds }) {
+            syncedPlaylists = syncedPlaylists.map { it.copy(ignoredIds = it.ignoredIds - song.videoId) }
+
+        }
         // A second tap on something already queued or running calls it off.
         if (song.videoId in downloadInProgress) {
             DesktopDownloadQueue.cancel(song.videoId)
@@ -1241,15 +1470,25 @@ fun BitChordDesktopApp() {
 
     /** Deletes the file a download saved and forgets the record. */
     fun removeDownload(song: Song) {
+        syncedPlaylists = syncedPlaylists.map {
+            it.ignoreDownload(song.videoId)
+        }
+
         scope.launch {
             withContext(Dispatchers.IO) { DesktopDownloadManager.delete(song) }
             downloads = downloads.filterNot { it.videoId == song.videoId }
-            persistence.saveDownloads(downloads)
+
         }
     }
 
     /** Everything on a page, in the order it is listed. */
     fun downloadAll(songs: List<Song>) {
+        val requested = songs.mapTo(mutableSetOf()) { it.videoId }
+        syncQueuedByRecord.replaceAll { _, ids -> ids - requested }
+        if (syncedPlaylists.any { it.ignoredIds.any { id -> id in requested } }) {
+            syncedPlaylists = syncedPlaylists.map { it.copy(ignoredIds = it.ignoredIds - requested) }
+
+        }
         val have = downloads.map(Song::videoId).toSet()
         DesktopDownloadQueue.enqueueAll(
             songs.filterNot { it.videoId in have || it.localPath != null },
@@ -1505,7 +1744,7 @@ fun BitChordDesktopApp() {
         // hold it is one kept here.
         if (!DesktopYouTubeAuth.isSignedIn || (seed != null && !DesktopSearchClient.isVideoId(seed.videoId))) {
             playlists = playlists + DesktopPlaylist(title = name, songs = listOfNotNull(seed))
-            persistence.savePlaylists(playlists)
+
             closePlaylistDialogs()
             return
         }
@@ -1552,12 +1791,104 @@ fun BitChordDesktopApp() {
         )
     }
 
+    fun syncedPlaylistFor(collection: DesktopCollection): DesktopPlaylistSyncRecord? =
+        syncedPlaylists.firstOrNull {
+            it.localPlaylistId == collection.browseId ||
+                (it.browseId == collection.browseId &&
+                    (DesktopNavidromeSource.parsePlaylist(it.browseId) != null || it.identity == playlistSyncIdentity))
+        }
+
+    fun togglePlaylistSync(collection: DesktopCollection) {
+        val existing = syncedPlaylistFor(collection)
+        if (existing != null) {
+            syncedPlaylists = syncedPlaylists.map {
+                if (it.localPlaylistId == existing.localPlaylistId) it.copy(enabled = !it.enabled) else it
+            }
+            playlistSyncErrors.remove(existing.localPlaylistId)
+            playlistSyncApprovalCounts.remove(existing.localPlaylistId)
+            approvedPlaylistSyncs = approvedPlaylistSyncs - existing.localPlaylistId
+            if (existing.enabled) {
+                syncQueuedByRecord.remove(existing.localPlaylistId).orEmpty().forEach { id ->
+                    val neededElsewhere = syncedPlaylists.any {
+                        it.enabled && it.localPlaylistId != existing.localPlaylistId && id in it.songIds && id !in it.ignoredIds
+                    }
+                    if (!neededElsewhere) DesktopDownloadQueue.cancel(id, userInitiated = false)
+                }
+            }
+        } else {
+            val record = DesktopPlaylistSyncRecord(
+                browseId = collection.browseId,
+                title = collection.title,
+                identity = DesktopNavidromeSource.parsePlaylist(collection.browseId)?.let { "navidrome:${it.sourceId}" }
+                    ?: playlistSyncIdentity,
+            )
+            syncedPlaylists = syncedPlaylists + record
+            approvedPlaylistSyncs = approvedPlaylistSyncs + record.localPlaylistId
+        }
+
+    }
+
+    fun syncPlaylistNow(collection: DesktopCollection) {
+        val record = syncedPlaylistFor(collection)?.takeIf { it.enabled } ?: return
+        approvedPlaylistSyncs = approvedPlaylistSyncs + record.localPlaylistId
+        playlistSyncRevision++
+    }
+
+    fun playlistSyncStatus(collection: DesktopCollection): String? {
+        val record = syncedPlaylistFor(collection) ?: return null
+        if (!record.enabled) return "Automatic downloads paused · Offline copy kept"
+        if (DesktopNavidromeSource.parsePlaylist(record.browseId) == null &&
+            (record.identity != playlistSyncIdentity || !DesktopYouTubeAuth.isSignedIn)) {
+            return "Switch to the playlist's YouTube account to sync."
+        }
+        val wanted = record.songIds.filterNot { it in record.ignoredIds }
+        val have = downloads.mapTo(mutableSetOf()) { it.videoId }
+        val missing = wanted.distinct().filterNot { it in have }
+        playlistSyncErrors[record.localPlaylistId]?.let { return it }
+        if (missing.isNotEmpty()) playlistSyncApprovalCounts[record.localPlaylistId]?.let {
+            return "$it new songs waiting. Use Sync now to download this larger update."
+        }
+        val failed = missing.count { downloadQueue[it]?.state is DesktopDownloadState.Failed }
+        if (failed > 0) return "$failed downloads failed · Sync now to retry"
+        if (missing.isNotEmpty()) return "${wanted.count { it in have }} of ${wanted.size} songs downloaded"
+        val excluded = record.songIds.count { it in record.ignoredIds }
+        return if (record.lastChecked == 0L) "Waiting for first sync"
+        else if (excluded > 0) "${wanted.size} downloaded · $excluded excluded · Checks hourly"
+        else "Up to date · Checks hourly while BitChord is open"
+    }
+
+    fun refreshNavidromePlaylists() {
+        serverPlaylistsRevision++
+        if (DesktopNavidromeSource.parsePlaylist(openedCollection?.browseId.orEmpty()) != null) {
+            collectionReloads++
+        }
+    }
+
+    fun openNavidromePlaylist(ref: DesktopNavidromeSource.ServerPlaylist) {
+        showCollection(
+            DesktopCollection(
+                browseId = ref.key,
+                title = ref.playlist.name.ifBlank { "Untitled playlist" },
+                subtitle = "Playlist • ${ref.playlist.songCount} songs · ${ref.source.displayName}",
+                thumbnailUrl = null,
+                type = BrowseType.PLAYLIST,
+                songs = emptyList(),
+                loading = true,
+            ),
+        )
+        collectionReloads++
+    }
+
     fun addToPlaylist(playlist: DesktopPlaylist) {
+        if (syncedPlaylists.any { it.localPlaylistId == playlist.id }) {
+            playlistError = "This offline playlist follows its server copy. Add songs to the original playlist instead."
+            return
+        }
         val song = playlistTarget ?: return
         playlists = playlists.map { current ->
             if (current.id == playlist.id) current.copy(songs = (current.songs + song).distinctBy(Song::videoId)) else current
         }
-        persistence.savePlaylists(playlists)
+
         playlistTarget = null
     }
 
@@ -2615,6 +2946,7 @@ fun BitChordDesktopApp() {
                 // WASAPI and WinRT, and exitProcess would unload those libraries under them.
                 playbackEngine.shutdown()
                 DesktopWindowsMedia.stop()
+                libraryWriter.close()
                 exitProcess(0)
             },
         )
@@ -2639,8 +2971,9 @@ fun BitChordDesktopApp() {
                 "downloads: ${downloads.size - onDisk.size} recorded file(s) are gone; forgetting them",
             )
             downloads = onDisk
-            persistence.saveDownloads(onDisk)
+
         }
+        downloadsVerified = true
         loadHome()
     }
 
@@ -2660,8 +2993,9 @@ fun BitChordDesktopApp() {
     // every row's tick read from.
     LaunchedEffect(Unit) {
         DesktopDownloadQueue.finished.collect { saved ->
-            downloads = (listOf(saved) + downloads.filterNot { it.videoId == saved.videoId }).take(200)
-            persistence.saveDownloads(downloads)
+            syncQueuedByRecord.replaceAll { _, ids -> ids - saved.videoId }
+            downloads = listOf(saved) + downloads.filterNot { it.videoId == saved.videoId }
+
         }
     }
 
@@ -3356,6 +3690,10 @@ fun BitChordDesktopApp() {
                         // One layer at a time, innermost first: the player's own side panel, then
                         // the player.
                         event.key == Key.Escape -> when {
+                            overlays.notice != null -> {
+                                overlays.notice = null
+                                true
+                            }
                             // Leave typing mode first; a second Escape can close the surrounding
                             // page or panel without requiring a click away from the input.
                             TextEntryFocus.active -> {
@@ -3444,6 +3782,16 @@ fun BitChordDesktopApp() {
                         settingsOpen = overlays.settingsPage != null,
                         accountPlaylists = sidebarAccountPlaylists,
                         localPlaylists = playlists,
+                        navidromePlaylists = {
+                            DesktopNavidromePlaylistDropdown(
+                                configs = sourceConfigs,
+                                playlists = serverPlaylists,
+                                loading = serverPlaylistsLoading,
+                                error = serverPlaylistsError,
+                                onRefresh = ::refreshNavidromePlaylists,
+                                onOpen = ::openNavidromePlaylist,
+                            )
+                        },
                         openedCollectionId = openedCollection?.browseId,
                         query = query,
                         onQueryChange = { text ->
@@ -3798,11 +4146,14 @@ fun BitChordDesktopApp() {
                             },
                         )
                     }
+                    overlays.notice?.let { message ->
+                        DesktopActionNotice(message = message, onDismiss = { overlays.notice = null })
+                    }
                     if (overlays.playlistDialog || playlistTarget != null) {
                         DesktopPlaylistDialog(
                             song = playlistTarget,
                             accountPlaylists = accountPlaylists,
-                            localPlaylists = playlists,
+                            localPlaylists = playlists.filterNot { local -> syncedPlaylists.any { it.localPlaylistId == local.id } },
                             signedIn = youtubeSignedIn,
                             canUseAccount = playlistTarget
                                 ?.let { DesktopSearchClient.isVideoId(it.videoId) } ?: true,
@@ -4255,6 +4606,7 @@ fun BitChordDesktopApp() {
                             onShare = openedCollection
                                 ?.takeIf { it.type == BrowseType.ALBUM || it.type == BrowseType.PLAYLIST }
                                 ?.takeIf { DesktopNavidromeSource.parseAlbum(it.browseId) == null }
+                                ?.takeIf { DesktopNavidromeSource.parsePlaylist(it.browseId) == null }
                                 ?.let { collection -> { shareCollection(collection) } },
                             onDelete = { overlays.delete = true }.takeIf { openedCollection?.owned == true },
                             onReorder = { overlays.reorder = true }.takeIf {
@@ -4271,6 +4623,20 @@ fun BitChordDesktopApp() {
                                 playSongs(songs.shuffled(), 0, openedCollection?.let { collectionSource(it) })
                             },
                             onDownloadAll = ::downloadAll,
+                            playlistSyncMenu = { collection, dismiss ->
+                                val record = syncedPlaylistFor(collection)
+                                val canSync = collection.type == BrowseType.PLAYLIST &&
+                                    (record != null || DesktopNavidromeSource.parsePlaylist(collection.browseId) != null ||
+                                        (collection.browseId.startsWith("VL") && playlists.none { it.id == collection.browseId }))
+                                if (canSync) DesktopPlaylistSyncMenu(
+                                    enabled = record?.enabled == true,
+                                    busy = record?.let { playlistSyncBusy[it.localPlaylistId] == true } ?: false,
+                                    status = playlistSyncStatus(collection),
+                                    onToggle = { togglePlaylistSync(collection) },
+                                    onSync = { syncPlaylistNow(collection) },
+                                    onDismissMenu = dismiss,
+                                )
+                            },
                             animatedCanvas = animatedCanvas,
                             onToggleLike = { song ->
                                 toggleLike(song)
@@ -4421,7 +4787,7 @@ fun BitChordDesktopApp() {
                             },
                             onImport = { title, songs ->
                                 playlists = playlists + DesktopPlaylist(title = title, songs = songs)
-                                persistence.savePlaylists(playlists)
+
                             },
                             contentPadding = sharedPagePadding,
                         )
@@ -4488,6 +4854,18 @@ fun BitChordDesktopApp() {
                             onShelfItemClick = ::openLibraryItem,
                             onShelfItemLongPress = { item -> if (item.videoId != null) openMenu(item.toSong()) },
                             onNewPlaylist = { overlays.playlistDialog = true },
+                            playlistBrowser = {
+                                Box(Modifier.padding(horizontal = PAGE_GUTTER)) {
+                                    DesktopNavidromePlaylistDropdown(
+                                        configs = sourceConfigs,
+                                        playlists = serverPlaylists,
+                                        loading = serverPlaylistsLoading,
+                                        error = serverPlaylistsError,
+                                        onRefresh = ::refreshNavidromePlaylists,
+                                        onOpen = ::openNavidromePlaylist,
+                                    )
+                                }
+                            },
                             onShowAll = { shelf -> libraryShowAll = shelf },
                             replay = {
                                 // The phone's wallet of Replay cards, or nothing until there is
@@ -4932,6 +5310,7 @@ private fun DesktopSidebar(
     settingsOpen: Boolean,
     accountPlaylists: List<ShelfItem>,
     localPlaylists: List<DesktopPlaylist>,
+    navidromePlaylists: @Composable () -> Unit,
     openedCollectionId: String?,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -5067,6 +5446,7 @@ private fun DesktopSidebar(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
+                item(key = "navidrome:import") { navidromePlaylists() }
                 items(visibleAccount, key = { "account:${it.browseId}" }) { playlist ->
                     DesktopSidebarItem(
                         Icons.AutoMirrored.Rounded.PlaylistPlay,
@@ -7323,6 +7703,7 @@ private fun DesktopCollectionPage(
     onPlaySongs: (List<Song>, Int) -> Unit,
     onShuffle: (List<Song>) -> Unit,
     onDownloadAll: (List<Song>) -> Unit,
+    playlistSyncMenu: @Composable (DesktopCollection, () -> Unit) -> Unit,
     animatedCanvas: Boolean,
     onToggleLike: (Song) -> Unit,
     onDownload: (Song) -> Unit,
@@ -7351,6 +7732,7 @@ private fun DesktopCollectionPage(
     // playlists, and every page when signed out. The button is only there when it can work.
     val canSave = (collection.type == BrowseType.ALBUM || collection.type == BrowseType.PLAYLIST) &&
         collection.owned != true &&
+        DesktopNavidromeSource.parsePlaylist(collection.browseId) == null &&
         DesktopNavidromeSource.parseAlbum(collection.browseId) == null
     var library by remember(collection.browseId) { mutableStateOf<LibraryState?>(null) }
     val libraryScope = rememberCoroutineScope()
@@ -7532,6 +7914,7 @@ private fun DesktopCollectionPage(
                                             onDownloadAll(songs)
                                         },
                                     )
+                                    playlistSyncMenu(collection) { moreOpen = false }
                                     onShare?.let { share ->
                                         DropdownMenuItem(
                                             text = { Text(DesktopStrings["share", "Share"]) },

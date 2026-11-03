@@ -112,6 +112,13 @@ class DesktopPersistence(
             .map { (id, song) -> encode(id) + DELIMITER + encodeSong(song, queueFields = false) },
     )
 
+    internal fun syncedPlaylists(): List<DesktopPlaylistSyncRecord> =
+        runCatching { sourceJson.decodeFromString<List<DesktopPlaylistSyncRecord>>(string("synced_playlists", "[]")) }
+            .getOrDefault(emptyList())
+
+    internal fun saveSyncedPlaylists(records: List<DesktopPlaylistSyncRecord>) =
+        saveString("synced_playlists", sourceJson.encodeToString(records))
+
     fun playlists(): List<DesktopPlaylist> = readLines(KEY_PLAYLISTS).mapNotNull(::decodePlaylist)
 
     fun savePlaylists(playlists: List<DesktopPlaylist>) = writeLines(KEY_PLAYLISTS, playlists.map(DesktopPlaylist::toPreferenceLine))
