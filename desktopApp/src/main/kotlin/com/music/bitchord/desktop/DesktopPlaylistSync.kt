@@ -18,6 +18,8 @@ internal data class DesktopPlaylistSyncRecord(
     val songIds: List<String> = emptyList(),
     val ignoredIds: Set<String> = emptySet(),
     val lastChecked: Long = 0,
+    val enabled: Boolean = true,
+    val approvedIds: Set<String> = emptySet(),
 ) {
     fun offlinePlaylist(downloads: List<Song>): DesktopPlaylist {
         val saved = downloads.associateBy { it.videoId }
@@ -54,3 +56,23 @@ internal suspend fun loadPlaylistForSync(browseId: String): DesktopCollection {
         songs = snapshot.songs,
     )
 }
+
+internal data class DesktopPlaylistSyncPlan(val downloads: List<Song>, val needsApproval: Boolean)
+
+/** Active transfers and retries are not new additions and must not trip the large-update gate. */
+internal fun planPlaylistSync(
+    record: DesktopPlaylistSyncRecord,
+    songs: List<Song>,
+    downloads: List<Song>,
+    active: Map<String, DesktopDownloadItem>,
+    approved: Boolean,
+): DesktopPlaylistSyncPlan {
+    if (!record.enabled) return DesktopPlaylistSyncPlan(emptyList(), false)
+    val missing = missingPlaylistDownloads(songs, downloads, record.ignoredIds)
+    val waiting = missing.filter { active[it.videoId]?.state.let { state -> state == null || state is DesktopDownloadState.Failed } }
+    val newSongs = waiting.count { it.videoId !in record.approvedIds && active[it.videoId]?.state !is DesktopDownloadState.Failed }
+    return DesktopPlaylistSyncPlan(waiting, !approved && newSongs > PLAYLIST_SYNC_AUTO_LIMIT)
+}
+
+internal fun canSyncPlaylist(record: DesktopPlaylistSyncRecord, identity: String, signedIn: Boolean): Boolean =
+    record.enabled && (DesktopNavidromeSource.parsePlaylist(record.browseId) != null || (signedIn && record.identity == identity))

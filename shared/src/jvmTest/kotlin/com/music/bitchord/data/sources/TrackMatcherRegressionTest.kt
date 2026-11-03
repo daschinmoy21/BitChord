@@ -19,6 +19,16 @@ class TrackMatcherRegressionTest {
         assertEquals("", TrackMatcher.primaryArtist("Música"))
     }
 
+    @Test fun spelledOutPartNumbersRemainDifferentRecordings() {
+        assertNull(TrackMatcher.best(listOf(song("Interlude Part. Two")), TrackMatcher.targetOf(song("Interlude Part. One"))))
+        assertTrue(TrackMatcher.searchableTitle("Interlude Part. One").contains("one"))
+    }
+
+    @Test fun fullTranslationsKeepShortWordsAndSeparateAsides() {
+        assertNull(TrackMatcher.best(listOf(song("You")), TrackMatcher.targetOf(song("君 (To You)"))))
+        assertNotNull(TrackMatcher.best(listOf(song("Let It Go")), TrackMatcher.targetOf(song("夜 (Let It Go) (Official Audio)"))))
+    }
+
     @Test fun wholeBracketedTranslationMatchesButOneWordOfItDoesNot() {
         assertNotNull(TrackMatcher.best(listOf(song("Night")), TrackMatcher.targetOf(song("夜 (Night)"))))
         assertNull(TrackMatcher.best(listOf(song("Night")), TrackMatcher.targetOf(song("夜に駆ける (Racing Into The Night)"))))

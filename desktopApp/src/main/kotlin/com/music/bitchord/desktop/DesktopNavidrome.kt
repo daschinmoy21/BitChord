@@ -12,6 +12,8 @@ import com.music.bitchord.data.model.SearchResult
 import com.music.bitchord.data.model.ArtistPage
 import com.music.bitchord.data.navidrome.NavidromeLibrary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -38,6 +40,7 @@ internal object DesktopNavidromeSource {
     private const val SEPARATOR = '/'
     private const val ALBUM_LIST = "alphabeticalByName"
 
+    private val starMutationLock = Mutex()
     private val clients = ConcurrentHashMap<String, Pair<String, DesktopNavidromeClient>>()
     private val rows = ConcurrentHashMap<String, NavidromeSong>()
 
@@ -242,10 +245,10 @@ internal object DesktopNavidromeSource {
             .mapTo(mutableSetOf()) { trackKey(config.id, it.id) }
     }
 
-    suspend fun setStarred(ref: TrackRef, starred: Boolean): Result<Unit> {
+    suspend fun setStarred(ref: TrackRef, starred: Boolean): Result<Unit> = starMutationLock.withLock {
         val config = DesktopSourceRegistry.navidromeConfig(ref.sourceId)?.takeIf { it.enabled && it.isComplete }
-            ?: return Result.failure(IllegalStateException("That server is disabled or no longer set up"))
-        return client(config)?.setStarred(ref.trackId, starred)
+            ?: return@withLock Result.failure(IllegalStateException("That server is disabled or no longer set up"))
+        client(config)?.setStarred(ref.trackId, starred)
             ?: Result.failure(IllegalStateException("No login saved for this server"))
     }
 
@@ -449,4 +452,17 @@ internal fun UiState<LibraryPage>.mergingServerAlbums(albums: List<ShelfItem>): 
         UiState.Success(LibraryPage(emptyList(), emptyList(), emptyList()).withServerAlbums(albums))
     }
     is UiState.Success -> UiState.Success(data.withServerAlbums(albums))
+}
+
+/** Preserve legacy local hearts during migration, and never overwrite an in-flight click. */
+internal fun mergeNavidromeFavourites(
+    cached: Set<String>,
+    server: Set<String>,
+    sourceId: String,
+    pending: Set<String>,
+    migrateLegacy: Boolean,
+): Set<String> {
+    val own = cached.filterTo(mutableSetOf()) { DesktopNavidromeSource.parseTrack(it)?.sourceId == sourceId }
+    val preserved = cached - (own - pending)
+    return preserved + ((server + if (migrateLegacy) own else emptySet()) - pending)
 }

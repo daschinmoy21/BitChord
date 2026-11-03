@@ -70,13 +70,17 @@ object DesktopDownloadQueue {
     /** Tracks that reached disk, for the library to record. */
     val finished: SharedFlow<Song> = _finished
 
+    private val _cancelled = MutableStateFlow<Set<String>>(emptySet())
+    val cancelled: StateFlow<Set<String>> = _cancelled
+
     /**
      * Adds [song] to the queue, unless it is already in it.
      *
      * A second tap on a track already queued or running is a no-op rather than a second transfer:
      * the row it would produce is the same row.
      */
-    fun enqueue(song: Song) {
+    fun enqueue(song: Song, automatic: Boolean = false) {
+        if (!automatic) _cancelled.update { it - song.videoId }
         val id = song.videoId
         if (id.isBlank()) return
         val item = synchronized(lock) {
@@ -88,7 +92,7 @@ object DesktopDownloadQueue {
         ensureWorkers()
     }
 
-    fun enqueueAll(songs: List<Song>) = songs.forEach(::enqueue)
+    fun enqueueAll(songs: List<Song>, automatic: Boolean = false) = songs.forEach { enqueue(it, automatic) }
 
     /**
      * Drops [videoId] from the queue, or stops it if it is one of the ones running.
@@ -97,7 +101,8 @@ object DesktopDownloadQueue {
      * and its job existing: a cancel landing in that window finds no job to stop, but [onRunning]
      * then finds the id it was told to run is no longer wanted and stops it on arrival.
      */
-    fun cancel(videoId: String) {
+    fun cancel(videoId: String, userInitiated: Boolean = true) {
+        if (userInitiated) _cancelled.update { it + videoId }
         val job = synchronized(lock) {
             pending.remove(videoId)
             if (videoId !in running) return@synchronized null

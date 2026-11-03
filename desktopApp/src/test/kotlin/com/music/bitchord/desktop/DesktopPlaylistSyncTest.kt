@@ -38,4 +38,46 @@ class DesktopPlaylistSyncTest {
         } finally { node.removeNode() }
     }
 
+    @Test fun largeUpdateGateCountsOnlyUnapprovedNewDownloads() {
+        val songs = (1..300).map { song("track-$it") }
+        val record = DesktopPlaylistSyncRecord("VLtest", "Playlist", "youtube:a")
+        assertTrue(planPlaylistSync(record, songs, emptyList(), emptyMap(), false).needsApproval)
+        assertTrue(!planPlaylistSync(record, songs, emptyList(), emptyMap(), true).needsApproval)
+        // Persisting the fetched track list without approval cannot bypass the next automatic check.
+        assertTrue(planPlaylistSync(record.copy(songIds = songs.map { it.videoId }), songs, emptyList(), emptyMap(), false).needsApproval)
+        val running = songs.associate { it.videoId to DesktopDownloadItem(it, DesktopDownloadState.Running(0.5f), 1) }
+        assertTrue(!planPlaylistSync(record, songs, emptyList(), running, false).needsApproval)
+        val failed = songs.associate { it.videoId to DesktopDownloadItem(it, DesktopDownloadState.Failed("offline"), 1) }
+        assertTrue(!planPlaylistSync(record, songs, emptyList(), failed, false).needsApproval)
+        val previouslyApproved = record.copy(approvedIds = songs.map { it.videoId }.toSet())
+        assertTrue(!planPlaylistSync(previouslyApproved, songs, emptyList(), emptyMap(), false).needsApproval)
+    }
+
+    @Test fun pausedAndAccountScopedSubscriptionsDoNotRunWithoutTheRightSession() {
+        val record = DesktopPlaylistSyncRecord("VLLM", "Liked", "youtube:a", ignoredIds = setOf("deleted"))
+        assertTrue(!canSyncPlaylist(record, "youtube:a", false))
+        assertTrue(!canSyncPlaylist(record, "youtube:b", true))
+        assertTrue(canSyncPlaylist(record, "youtube:a", true))
+        val resumed = record.copy(enabled = false).copy(enabled = true)
+        assertEquals(record.localPlaylistId, resumed.localPlaylistId)
+        assertEquals(record.ignoredIds, resumed.ignoredIds)
+        assertTrue(!canSyncPlaylist(record.copy(enabled = false), "youtube:a", true))
+        assertTrue(canSyncPlaylist(record.copy(browseId = "navidrome-playlist:server/id"), "youtube:b", false))
+    }
+
+    @Test fun libraryWriterDrainsTheLatestConflatedSnapshotOnClose() {
+        val node = Preferences.userRoot().node("bitchord-writer-test-${System.nanoTime()}")
+        try {
+            val persistence = DesktopPersistence(node)
+            val record = DesktopPlaylistSyncRecord("VLtest", "Playlist", "youtube:a", enabled = false)
+            DesktopLibraryWriter(persistence).use { writer ->
+                writer.submit(DesktopLibrarySnapshot(listOf(song("old", true)), emptyList(), emptyList()))
+                writer.submit(DesktopLibrarySnapshot(listOf(song("new", true)), listOf(record.offlinePlaylist(emptyList())), listOf(record)))
+            }
+            assertEquals(listOf("new"), persistence.downloads().map { it.videoId })
+            assertEquals(listOf(record), persistence.syncedPlaylists())
+            assertEquals(record.localPlaylistId, persistence.playlists().single().id)
+        } finally { node.removeNode() }
+    }
+
 }

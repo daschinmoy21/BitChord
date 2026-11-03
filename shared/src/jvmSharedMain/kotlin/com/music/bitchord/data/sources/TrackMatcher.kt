@@ -373,11 +373,14 @@ object TrackMatcher {
         val versions: Set<String>,
         /** Words dropped with the packaging. A hint for scoring, never a veto. */
         val context: Set<String>,
+        /** Complete bracketed titles, without dropping short words or packaging tokens. */
+        val asides: Set<String> = emptySet(),
     )
 
     internal fun parseTitle(raw: String, artist: String = ""): TitleParts {
         val versions = sortedSetOf<String>()
         val context = mutableSetOf<String>()
+        val asides = mutableSetOf<String>()
         var text = normalize(raw)
 
         // A guest credit printed in Portuguese — YouTube Music Brazil writes
@@ -394,6 +397,7 @@ object TrackMatcher {
         repeat(BRACKET_PASSES) {
             if (!BRACKETED.containsMatchIn(text)) return@repeat
             text = BRACKETED.replace(text) { match ->
+                asides += match.groupValues[1].replace(NON_ALNUM, "")
                 classify(match.groupValues[1], versions, context)
                 " "
             }
@@ -481,6 +485,7 @@ object TrackMatcher {
             core = coreString,
             versions = versions,
             context = context,
+            asides = asides,
         )
     }
 
@@ -523,8 +528,8 @@ object TrackMatcher {
         // the whole title — one word of "(Racing Into The Night)" is not the
         // song "Night".
         if ((wantedCJK && gotLatin) || (gotCJK && wantedLatin)) {
-            if (wanted.context.joinToString("") == got.core) return true
-            if (got.context.joinToString("") == wanted.core) return true
+            if (got.core in wanted.asides) return true
+            if (wanted.core in got.asides) return true
         }
         return false
     }
@@ -900,7 +905,7 @@ object TrackMatcher {
      * and `parte` is a different word.
      */
     private val PT_BR_FEATURING = Regex(
-        """\bpart\.\s+(?!(?:\d|[ivx]+\b))[^)\]]*[)\]]?|\bpart\s+(?:esp\.?|especial)\b[^)\]]*[)\]]?""",
+        """\bpart\.\s+(?!(?:\d|[ivx]+\b|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b))[^)\]]*[)\]]?|\bpart\s+(?:esp\.?|especial)\b[^)\]]*[)\]]?""",
         RegexOption.IGNORE_CASE,
     )
     /** `~` and the wave dash `〜` join words in Japanese titles ("真夜中のドア〜stay"). */
