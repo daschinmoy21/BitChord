@@ -844,7 +844,7 @@ fun BitChordDesktopApp() {
                     val missing = missingPlaylistDownloads(loaded.songs, downloads, latest.ignoredIds)
                     val approved = record.localPlaylistId in approvedPlaylistSyncs
                     val updated = latest.copy(
-                        title = loaded.title,
+                        title = loaded.title.ifBlank { latest.title },
                         songIds = loaded.songs.map { it.videoId },
                         lastChecked = System.currentTimeMillis(),
                     )
@@ -885,6 +885,7 @@ fun BitChordDesktopApp() {
             playlists = next
             persistence.savePlaylists(next)
         }
+
     }
     var serverPlaylists by remember { mutableStateOf(emptyList<DesktopNavidromeSource.ServerPlaylist>()) }
     var serverPlaylistsLoading by remember { mutableStateOf(true) }
@@ -973,6 +974,19 @@ fun BitChordDesktopApp() {
     var collectionLoadingMore by remember { mutableStateOf(false) }
     var collectionError by remember { mutableStateOf<String?>(null) }
     var collectionReloads by remember { mutableStateOf(0) }
+    LaunchedEffect(playlists, syncedPlaylists, openedCollection?.browseId) {
+        val open = openedCollection
+        if (open != null && syncedPlaylists.any { it.localPlaylistId == open.browseId }) {
+            playlists.firstOrNull { it.id == open.browseId }?.let { offline ->
+                openedCollection = open.copy(
+                    title = offline.title,
+                    subtitle = "Playlist • ${offline.songs.size} songs",
+                    thumbnailUrl = offline.songs.firstOrNull()?.thumbnailUrl,
+                    songs = offline.songs,
+                )
+            }
+        }
+    }
     // The artist page is its own destination rather than a collection with a different header.
     var openedArtist by remember { mutableStateOf<DesktopArtistTarget?>(null) }
     var artistState by remember { mutableStateOf<UiState<ArtistPage>>(UiState.Loading) }
@@ -1806,6 +1820,10 @@ fun BitChordDesktopApp() {
     }
 
     fun addToPlaylist(playlist: DesktopPlaylist) {
+        if (syncedPlaylists.any { it.localPlaylistId == playlist.id }) {
+            playlistError = "This offline playlist follows its server copy. Add songs to the original playlist instead."
+            return
+        }
         val song = playlistTarget ?: return
         playlists = playlists.map { current ->
             if (current.id == playlist.id) current.copy(songs = (current.songs + song).distinctBy(Song::videoId)) else current
@@ -4079,7 +4097,7 @@ fun BitChordDesktopApp() {
                         DesktopPlaylistDialog(
                             song = playlistTarget,
                             accountPlaylists = accountPlaylists,
-                            localPlaylists = playlists,
+                            localPlaylists = playlists.filterNot { local -> syncedPlaylists.any { it.localPlaylistId == local.id } },
                             signedIn = youtubeSignedIn,
                             canUseAccount = playlistTarget
                                 ?.let { DesktopSearchClient.isVideoId(it.videoId) } ?: true,

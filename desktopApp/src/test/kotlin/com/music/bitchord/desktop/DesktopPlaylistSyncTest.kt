@@ -1,12 +1,9 @@
 package com.music.bitchord.desktop
 
-import com.music.bitchord.data.model.BrowseType
 import com.music.bitchord.data.model.Song
-import kotlinx.coroutines.runBlocking
 import java.util.prefs.Preferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DesktopPlaylistSyncTest {
@@ -41,11 +38,4 @@ class DesktopPlaylistSyncTest {
         } finally { node.removeNode() }
     }
 
-    @Test fun paginationPreservesAllEntriesAndRejectsARepeatedContinuation() = runBlocking<Unit> {
-        val first = DesktopCollection("VLtest", "Playlist", "", null, BrowseType.PLAYLIST, listOf(song("a")), continuation = "next")
-        val full = collectPlaylistSyncPages(first) { listOf(song("b"), song("a")) to null }
-        assertEquals(listOf("a", "b", "a"), full.songs.map { it.videoId })
-        assertFailsWith<IllegalStateException> { collectPlaylistSyncPages(first) { listOf(song("b")) to "next" } }
-        assertFailsWith<IllegalStateException> { collectPlaylistSyncPages(first) { error("Server offline") } }
-    }
 }

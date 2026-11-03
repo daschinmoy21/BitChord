@@ -44,22 +44,13 @@ internal fun missingPlaylistDownloads(
 /** Collect the entire playlist before committing a new snapshot; never save a partial page walk. */
 internal suspend fun loadPlaylistForSync(browseId: String): DesktopCollection {
     DesktopNavidromeSource.parsePlaylist(browseId)?.let { return DesktopNavidromeSource.openPlaylist(it) }
-    val first = DesktopSearchClient.browse(browseId).getOrThrow()
-    return collectPlaylistSyncPages(first) { DesktopSearchClient.moreCollectionSongs(it).getOrThrow() }
-}
-
-internal suspend fun collectPlaylistSyncPages(
-    first: DesktopCollection,
-    loadPage: suspend (String) -> Pair<List<Song>, String?>,
-): DesktopCollection {
-    val songs = first.songs.toMutableList()
-    val seen = mutableSetOf<String>()
-    var next = first.continuation
-    while (next != null) {
-        check(seen.add(next) && seen.size <= 100) { "Could not read the complete playlist" }
-        val page = loadPage(next)
-        songs += page.first
-        next = page.second
-    }
-    return first.copy(songs = songs, continuation = null)
+    val snapshot = com.music.bitchord.data.YtMusicRepository.playlistSnapshot(browseId).getOrThrow()
+    return DesktopCollection(
+        browseId = browseId,
+        title = snapshot.header?.title.orEmpty(),
+        subtitle = snapshot.header?.subtitle.orEmpty(),
+        thumbnailUrl = snapshot.header?.thumbnailUrl,
+        type = com.music.bitchord.data.model.BrowseType.PLAYLIST,
+        songs = snapshot.songs,
+    )
 }

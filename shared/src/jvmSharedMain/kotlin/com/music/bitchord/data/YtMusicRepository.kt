@@ -709,6 +709,30 @@ object YtMusicRepository {
         return response
     }
 
+    /** A fresh, validated, complete snapshot for offline playlist synchronization. */
+    suspend fun playlistSnapshot(browseId: String): Result<SongPage> = call("snapshot:$browseId") {
+        collectPlaylistSnapshot(Innertube.browse(browseId)) { Innertube.browseContinuation(it) }
+    }
+
+    internal suspend fun collectPlaylistSnapshot(
+        first: JsonObject,
+        loadMore: suspend (String) -> JsonObject,
+    ): SongPage {
+        val songs = mutableListOf<Song>()
+        val seen = mutableSetOf<String>()
+        var response = first
+        var continuation = false
+        while (true) {
+            val page = InnertubeParser.parsePlaylistSnapshotPage(response, continuation)
+            songs += page.songs
+            val token = page.continuation ?: break
+            check(seen.add(token) && seen.size < MAX_PAGES) { "Could not read the complete playlist" }
+            response = loadMore(token)
+            continuation = true
+        }
+        return SongPage(songs = songs, continuation = null, header = InnertubeParser.parseBrowseHeader(first))
+    }
+
     /** The page [SongPage.continuation] points at. */
     suspend fun moreSongs(token: String): Result<SongPage> = call("browse:more") {
         pageOf(Innertube.browseContinuation(token))

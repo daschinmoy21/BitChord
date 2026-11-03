@@ -523,7 +523,7 @@ object InnertubeParser {
      * playlist-shaped in scope (an album, say), so callers fall back to the
      * generic walk.
      */
-    fun parsePlaylistShelf(root: JsonElement): PlaylistShelfPage? {
+    fun parsePlaylistShelf(root: JsonElement, preserveEntries: Boolean = false): PlaylistShelfPage? {
         val scope: JsonElement = root.o("continuationContents")
             ?: root.o("contents").o("twoColumnBrowseResultsRenderer").o("secondaryContents")
             ?: return null
@@ -537,7 +537,7 @@ object InnertubeParser {
         val songs = playlistScope?.let { playlist ->
             collectRenderers(playlist, "musicResponsiveListItemRenderer")
                 .mapNotNull { parseResponsiveListItem(it, pageCredit) }
-                .distinctBy { it.videoId }
+                .let { if (preserveEntries) it else it.distinctBy { song -> song.videoId } }
         }.orEmpty()
         val knownSongs = songs.mapTo(HashSet()) { it.videoId }
         val suggested = suggestionShelves
@@ -551,6 +551,18 @@ object InnertubeParser {
         // continuation means more real tracks.
         val token = playlistScope?.let { continuationToken(it) }
         return PlaylistShelfPage(songs, suggested, token)
+    }
+
+    /** A synchronization snapshot must distinguish an empty playlist from an unreadable one. */
+    fun parsePlaylistSnapshotPage(root: JsonElement, continuation: Boolean = false): PlaylistShelfPage {
+        check(collectRenderers(root, "alertRenderer").none { it.s("type") == "ERROR" }) {
+            "The playlist is unavailable"
+        }
+        val hasPlaylist = collectRenderers(root, "musicPlaylistShelfRenderer").isNotEmpty() ||
+            root.o("continuationContents").o("musicPlaylistShelfContinuation") != null
+        check(hasPlaylist || continuation) { "Could not read the playlist's track list" }
+        return parsePlaylistShelf(root, preserveEntries = true)
+            ?: error("Could not read the complete playlist")
     }
 
     /** One page of saved library cards, plus the token for the next page. */
