@@ -1,214 +1,163 @@
 <div align="center">
 
-<br/>
-<br/>
+<img src="Logo.png" alt="BitChord" width="140" />
 
-<img src="Logo.png" alt="BitChord app icon" width="200" />
+# BitChord · Desktop fork
 
-# BitChord
+A personal music client for **NixOS + niri**, with a maintained native desktop app, Navidrome integration, and a shared Android build.
 
-### Personal fork for NixOS + niri
+[![Releases](https://img.shields.io/github/v/release/daschinmoy21/BitChord?include_prereleases&label=Fork%20releases)](https://github.com/daschinmoy21/BitChord/releases)
+[![Checks](https://img.shields.io/github/actions/workflow/status/daschinmoy21/BitChord/check.yml?branch=main&label=Checks)](https://github.com/daschinmoy21/BitChord/actions/workflows/check.yml)
+[![License](https://img.shields.io/github/license/daschinmoy21/BitChord)](LICENSE)
 
-<br/>
-
-[![Fork releases](https://img.shields.io/github/v/release/daschinmoy21/BitChord?include_prereleases&style=for-the-badge&label=Fork%20releases&labelColor=0d1117)](https://github.com/daschinmoy21/BitChord/releases)
-[![License](https://img.shields.io/github/license/daschinmoy21/BitChord?style=for-the-badge&labelColor=0d1117)](LICENSE)
-[![Checks](https://img.shields.io/github/actions/workflow/status/daschinmoy21/BitChord/check.yml?branch=main&style=for-the-badge&labelColor=0d1117)](https://github.com/daschinmoy21/BitChord/actions/workflows/check.yml)
-
-<br/>
-
-[**About this fork**](#about-this-fork) · [**Download**](#download) · [**Features**](#features) · [**Contributing**](#contributing) · [**Support**](#support) · [**Disclaimer**](#disclaimer)
-
-<br/>
+[Download](#download) · [Features](#features) · [Navidrome](#navidrome) · [Offline playlists](#offline-playlists) · [Build](#build-from-source) · [Credits](#credits)
 
 </div>
 
 ## About this fork
 
-This is [@daschinmoy21](https://github.com/daschinmoy21)'s personal fork of
-[BitChord](https://github.com/kushagrasinghx/BitChord), optimized for my Linux desktop:
-**NixOS with the niri Wayland compositor**. The focus is making everyday listening smoother
-on that setup, with desktop UX improvements and fixes built on the upstream project.
+Maintained by [@daschinmoy21](https://github.com/daschinmoy21) for everyday listening on Linux. Development focuses on a native Compose desktop app that fits a keyboard-driven NixOS/niri setup: working window resizing, system media controls, a tray, persistent playback state, and quick access to your music libraries.
 
-The work here includes:
+This repository maintains its own desktop app and UI alongside shared Kotlin code and Android targets. Changes are selected and adapted for this fork rather than automatically mirroring another client. Feature availability differs between desktop, Android, TV, and the web player.
 
-- A reproducible Nix development shell and XWayland window-resize handling for niri.
-- Keyboard shortcuts for seeking, skipping, volume, mute, and search, plus a shortcut help dialog.
-- Interface zoom controls with a percentage indicator and an Appearance slider.
-- Restoring the last song paused at its saved position, more readable player stats, and clickable album artist credits.
-- Desktop playback fixes and update checks that follow this fork's releases.
-- Story cards for songs, Replay, and recently played tracks on Android and desktop.
+## Download
 
-I plan to upstream selected fixes and generally useful UX improvements once they have settled.
-The original app, its branding, and much of its functionality are the work of the
-[upstream maintainers and contributors](https://github.com/kushagrasinghx/BitChord/graphs/contributors).
+Get builds from **[this fork’s releases](https://github.com/daschinmoy21/BitChord/releases)**. The [rolling `build-main` release](https://github.com/daschinmoy21/BitChord/releases/tag/build-main) tracks the latest successfully packaged `main` build; its notes identify the source commit.
 
-See [DESKTOP.md](DESKTOP.md) for the NixOS/niri setup and [CONTRIBUTING.md](CONTRIBUTING.md)
-for contributing here or preparing a change for upstream. Android and Windows targets remain
-available, while development in this fork is centered on my Linux setup.
+- **Linux:** `BitChord-linux-x86_64.AppImage` in rolling builds. Versioned releases can also provide AppImage, DEB, and RPM packages.
+- **Windows:** versioned releases provide an installer and portable ZIP when available.
+- **Android:** `BitChord-android-dev.apk` installs as **BitChord Dev** (`com.dev.bitchord`), separately from the production app.
+- **macOS:** the desktop target is checked in CI and can be built from source. Check release assets for available packages.
 
-> [!IMPORTANT]
-> BitChord is not affiliated with, endorsed by, or connected to YouTube or Google in any way. Use it at your own discretion.
+### Running an AppImage on NixOS
 
----
+```bash
+nix shell nixpkgs#appimage-run --command appimage-run ./BitChord-linux-x86_64.AppImage
+```
 
-<div align="center">
+Desktop update checks follow this fork’s versioned releases. Rolling `build-*` tags are downloaded manually. See [desktop setup](DESKTOP.md) and [release details](docs/DESKTOP_RELEASES.md) for packaging, versioning, and update behavior.
 
-<img src="Banner.png" alt="BitChord banner" width="100%" />
+## Features
 
-<h1><a id="features"></a>Features</h1>
+### A native Linux desktop
 
-The broader BitChord feature set below is inherited from upstream; availability varies between Android and desktop.
+- **Keyboard hints:** tap **Ctrl** to label clickable controls, then type a label to activate one. Press **?** for the shortcut sheet.
+- **Playback shortcuts:** seek, skip, change volume, mute, and focus search without opening menus.
+- **UI zoom:** adjust interface size with keyboard shortcuts or the Appearance setting.
+- **niri/XWayland support:** compositor-driven window resizing and the AWT setting needed for it.
+- **Desktop integration:** MPRIS media controls, a system tray, and audio-device selection.
+- **Session restore:** reopen the last track paused at its saved position.
+- **Readable playback details:** audio-pipeline information, improved stats contrast, and clickable artist credits.
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
+### Your libraries in one app
 
-#### Playback
-- **Search, browse and play** anything available on YouTube Music.
-- **Hi-Res lossless audio** — FLAC/ALAC from a configured module source, with YouTube Music as fallback.
-- **Gapless playback with true crossfade**, adjustable 0–12s.
-- **Automix [Beta]** — DJ-style transitions with beat-matching and tempo-stretching.
-- **Offline downloads** — save tracks with embedded metadata.
-- **Local music library** integration.
-- **Background playback** via a proper foreground media session.
-- **Apple-like lyrics animation** — credit to [binimum](https://github.com/binimum/am-lyrics).
+- Search, browse, and play YouTube Music, with account sign-in for your library and personalized content.
+- Browse Navidrome albums, artists, songs, and live playlists using your own server credentials.
+- Connect Spotify to browse playlists and Liked Songs, with tracks matched to YouTube Music recordings. Public playlist links can also be imported into local playlists.
+- Search Library by collection name and artist credit, with filters and results grouped by source.
+- Browse local music and downloads, and keep local playlists alongside account playlists.
+- Add and health-check supported music sources, with matching improvements for decorated titles, translated titles, and artist credits.
 
-#### Connectivity & Accounts
-- **Sign in with your Google account** for personalized content.
-- **Spotify integration** — connect your account to play your playlists and Liked Songs.
-- **Discord Rich Presence** — in-app login, live track/artist/album and progress.
-- **Scrobbling** to Last.fm and ListenBrainz.
-- **Pluggable sources** — add, edit, test and health-check module sources.
+### Listening and playback
 
-    </td>
-    <td width="50%" valign="top">
+- Gapless playback, configurable crossfade, and Automix transitions.
+- Lossless playback from compatible sources, with source selection and fallback controls.
+- Equalizer, loudness normalization, playback speed, and a sleep timer.
+- A queue with drag reordering, play-next actions, and playback history.
+- Track downloads and optional automatic updates for downloaded playlists.
 
-#### Experience
-- **Animated album canvas** — motion artwork on the now-playing screen.
-- **Word-synced lyrics** — word/syllable-level highlighting from multiple sources.
-- **Lyrics providers** — credit to [lrc.red](https://lrc.red), [BiniLyrics](https://github.com/binimum), [BetterLyrics](https://github.com/better-lyrics/better-lyrics), [PaxSenix](https://lyrics.paxsenix.org), [LyricsPlus](https://github.com/ibratabian17/YouLyPlus), [SimpMusic](https://github.com/maxrave-dev/SimpMusic), [Unison](https://unison.boidu.dev), [Megalobiz](https://www.megalobiz.com), [KuGou](https://www.kugou.com), [LRCLIB](https://lrclib.net), [Musixmatch](https://www.musixmatch.com) and [Genius](https://genius.com).
-- **Dynamic, artwork-driven theming** — Material palette extracted from album art.
-- **Frosted-glass UI** — Telegram-style translucent bars via Haze, Material 3 theming.
+### Lyrics, artwork, and sharing
 
-#### Controls & Tweaks
-- **Per-network audio quality** — separate quality ceilings for Wi-Fi and mobile data.
-- **Playback speed control** (0.5×–2.0×) and **skip silence**.
-- **Sleep timer** — fixed presets or "stop after this track".
-- **System equalizer** integration.
-- **Stats for nerds** — codec, bit depth, sample rate, and more on the now-playing screen.
+- Synced lyrics, including word-level highlighting when the provider supplies timings.
+- Multiple lyrics providers, configurable source order, and on-demand translation.
+- Animated Canvas artwork and artwork-driven player visuals.
+- Listening statistics and Replay, plus shareable story cards for songs and listening summaries.
+- Discord Rich Presence, Last.fm and ListenBrainz scrobbling, and Listen Together.
 
-    </td>
-  </tr>
-</table>
+## Navidrome
 
-</div>
+Add a Navidrome source in **Settings → Sources**, enter the server address and credentials, then test and save it. Enable the source to include its library.
 
----
+On desktop:
 
-<div align="center">
+- **Sidebar:** expand **Navidrome playlists** to browse playlist rows inline. Collapse the group to free sidebar space.
+- **Library:** the **Navidrome playlists** shelf shows artwork cards alongside the other collection sections. It also appears under the **Playlists** filter; use **Show all** when the shelf contains more cards than fit in its preview.
+- **Refresh:** use the refresh icon in the group or shelf header. The playlist list and open server playlist also refresh automatically every minute while the app is open.
+- **Playback:** opening a playlist reads its current tracks directly from the server, without importing a local copy.
+- **Favourites:** hearts on Navidrome tracks use the server’s star/unstar actions. Existing local Navidrome favourites are migrated before the server becomes authoritative.
 
-<h1><a id="download"></a>Download</h1>
+Navidrome browsing works without a YouTube sign-in. Configure playback priority, metered-network behavior, and play reporting in the Navidrome settings.
 
-Use this fork's [Releases](https://github.com/daschinmoy21/BitChord/releases), including prereleases.
-The [rolling main build](https://github.com/daschinmoy21/BitChord/releases/tag/build-main)
-contains the latest successfully packaged main-branch build.
+Android also supports adding a Navidrome source and browsing its library, but the desktop-specific playlist sections described above belong to the desktop app.
 
-- **Linux:** download `BitChord-linux-x86_64.AppImage`. On NixOS, run it through `appimage-run`; see [DESKTOP.md](DESKTOP.md).
-- **Android:** download `BitChord-android-dev.apk`, an installable universal **BitChord Dev** build. It uses `com.dev.bitchord`, so it can coexist with the upstream production app. Enable “Install unknown apps” for the app you download it with. Tagged releases are signed with this fork's own key, and the app offers them as in-app updates; a build installed before that key existed has to be uninstalled once first.
-- **Windows and versioned Linux packages:** see [DESKTOP.md](DESKTOP.md) for the artifacts produced by the versioned release workflow.
+## Offline playlists
 
-These are builds of this fork. The [upstream releases](https://github.com/kushagrasinghx/BitChord/releases)
-remain available for the original project.
+Open a desktop playlist’s **⋯** menu and choose **Download and keep updated**. BitChord creates an ordered offline copy in your local playlists, including repeated tracks, and downloads the audio into `~/Music/BitChord`.
 
-### Sharing story cards
+- Checks run at startup and hourly while BitChord is open. Private YouTube playlists require the corresponding account session.
+- **Sync now** checks immediately and retries failed downloads. Automatic updates with more than **50 new songs** wait for explicit approval through this action.
+- Completed downloads appear in the offline copy as they arrive. Managed copies follow the original playlist; add or rearrange tracks in the original rather than editing the managed copy.
+- **Stop automatic downloads** pauses the subscription and retains its offline copy. Re-enabling uses the same copy and remembers excluded tracks.
+- Explicitly deleted or cancelled tracks stay excluded from automatic downloads. Downloading them manually restores them.
+- Removing a song from the online playlist updates the offline playlist’s membership but retains its audio file in Downloads.
+- Failed or unreadable server responses keep the previous saved playlist intact.
 
-On Android, long-press a song or open its **⋮** menu and choose **Share**. In **History**, tap
-**Share story**; in **Replay**, choose **Share my Replay**. Pick **Artwork**, **Colour**, or **Dark**,
-then **Save** the card to your gallery or **Share** it through Android's share sheet. Cards are
-1080 × 1920 PNGs without app branding. Song cards also offer **Share link**.
+## Keyboard controls
 
-### Searching your library
+| Key | Action |
+| --- | --- |
+| Tap Ctrl | Show clickable-control hints |
+| ? | Open the full shortcut sheet |
+| Space | Play or pause |
+| ← / → | Seek 5 seconds; hold Shift for 15 seconds |
+| Ctrl + ← / → | Previous or next track |
+| ↑ / ↓ | Change volume |
+| M | Mute or unmute |
+| / or Ctrl + K | Focus search |
+| Ctrl + + / − / 0 | Zoom in, zoom out, or reset |
+| J / K | Scroll down or up |
+| Alt + ← | Go back |
 
-On desktop and Android, Library has search and filters for playlists, albums, artists,
-podcasts and on-device collections. Search matches collection names and artist credits,
-and also queries YouTube Music and enabled Navidrome servers. Results are grouped by source.
-The refresh button beside search refetches saved collections and Navidrome albums.
+Text fields retain normal typing behavior. The in-app shortcut sheet lists the additional navigation and scrolling controls.
 
-On desktop, use **Navidrome playlists** in the sidebar or Library’s Playlists section
-to browse all playlists from enabled servers. Playlists open directly from Navidrome; the
-list and open playlist refresh automatically every minute, and reopening fetches current tracks.
-Hearts on Navidrome tracks update the server’s favourites; existing server favourites are loaded automatically.
+## Build from source
 
-In a desktop playlist’s **⋯** menu, choose **Download and keep updated** for an ordered offline
-copy in your local playlists. BitChord checks for changes hourly while open and on startup.
-Use **Sync now** to check immediately or approve an update larger than 50 new songs.
-**Stop automatic downloads** keeps the offline copy and existing files. Tracks you delete stay
-deleted; tracks removed from the online playlist keep their audio files in Downloads.
+For the supported Nix development environment on `x86_64-linux`:
 
-On Android, open **Settings → Sources → Add Navidrome** to connect your server. Enter its
-address, username and password, then test and save. Albums appear in Library even when
-signed out of YouTube; artist search results open the artist’s albums. The saved login
-uses a salted token in encrypted preferences. Production Android builds require HTTPS;
-the Dev build also permits HTTP servers on your local network.
+```bash
+git clone https://github.com/daschinmoy21/BitChord.git
+cd BitChord
+nix develop --command ./gradlew :desktopApp:run
+```
 
-</div>
+The development shell supplies Java 21, build tools, and the native graphics/audio libraries. Run inside your desktop session with XWayland available. It sets `_JAVA_AWT_WM_NONREPARENTING=1` for Wayland compositors and configures the native library paths.
 
----
+Run the checks and create a desktop app image:
 
-<div align="center">
+```bash
+nix develop --command ./gradlew :shared:jvmTest :desktopUi:jvmTest :desktopApp:test
+nix develop --command ./gradlew :desktopApp:createDistributable
+```
 
-<h1><a id="contributing"></a>Contributing</h1>
+Desktop builds do not require an Android SDK. To build Android, configure an SDK through `local.properties`, `ANDROID_HOME`, or `ANDROID_SDK_ROOT`, then use the Android commands in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Bug fixes and desktop UX improvements are welcome. Open issues and pull requests against this fork’s `main` branch, and mention whether a change should eventually go upstream. Please review the [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+## Project documentation
 
-[**Contributing Guide**](CONTRIBUTING.md) · [**Code of Conduct**](CODE_OF_CONDUCT.md) · [**Maintainers**](MAINTAINERS.md) · [**Additional Docs**](ADDITIONAL.md)
+- [Desktop setup and platform packaging](DESKTOP.md)
+- [Fork releases and updates](docs/DESKTOP_RELEASES.md)
+- [Contribution and validation guide](CONTRIBUTING.md)
+- [Listen Together server](backend/README.md)
+- [Lyrics translation](docs/LYRICS_TRANSLATION.md)
+- [Documentation index](ADDITIONAL.md)
 
-### Thanks to the upstream contributors ❤
+Issues and pull requests for this fork belong in [daschinmoy21/BitChord](https://github.com/daschinmoy21/BitChord), targeting **`main`**. Include your platform and reproduction steps when reporting a bug, and say whether a proposed fix is a candidate for upstream.
 
-<a href="https://github.com/kushagrasinghx/BitChord/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/kushagrasinghx/BitChord/contributors/contributors.svg" />
-</a>
+## License and third-party services
 
-</div>
+Distributed under the **GNU General Public License v3.0**; see [LICENSE](LICENSE). This client is independent of YouTube, Google, Spotify, and the other services it connects to. Access to music depends on your sources and accounts; the app does not host a music catalogue. Use connected services in accordance with their terms and applicable law.
 
----
+## Credits
 
-<div align="center">
+This fork is based on **[BitChord by @kushagrasinghx](https://github.com/kushagrasinghx/BitChord)**. The original project’s architecture, design, branding, and much of its functionality are the work of its [maintainers and contributors](https://github.com/kushagrasinghx/BitChord/graphs/contributors). Their work made this desktop fork possible.
 
-<h1><a id="support"></a>Support</h1>
-
-The links below support the **upstream BitChord maintainers**. This fork keeps their work and attribution visible:
-
-<a href="https://ko-fi.com/kushagrasinghx" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/kofi-singular-alt/cozy.svg" alt="Support me on Ko-fi" height="55"/></a>
-<a href="https://paypal.me/kuxhagrasingh" target="_blank" rel="noopener noreferrer"><img src="https://cdn.jsdelivr.net/gh/JMcrafter26/badges@main/src/assets/donate/paypal-plural/cozy.svg" alt="Support us on PayPal" height="55"/></a>
-
-<br/>
-<img src="upi_support.jpg" alt="UPI Support" width="250" />
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="disclaimer"></a>Disclaimer & Legal Notice</h1>
-
-BitChord is an independent, community-driven third-party audio player and client. It is **not** associated with Google LLC, YouTube Music, Deezer, Telegram, or any of their parent companies.
-
-* **No Media Hosting:** BitChord does not host, upload, or store copyrighted music files. It operates strictly as an interface to scan local device storage or stream media directly from public, public-facing, or user-authenticated APIs.
-* **Fair Use & API Usage:** This software is created solely for personal research, educational, and fair-use purposes. The user is entirely responsible for ensuring their usage aligns with their local copyright laws and YouTube Terms of Service.
-* **No Ad-Blocking Guarantee:** While BitChord focuses on providing a clean listening environment, it does not guarantee permanent bypasses or modifications to commercial third-party platform conditions.
-* **Copyleft:** BitChord is free software under the GPLv3. The license does not let anyone forbid others from selling or redistributing copies, but any distribution must come with the Corresponding Source under the same license.
-
-</div>
-
----
-
-<div align="center">
-
-<h1><a id="license"></a>License</h1>
-
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
-
-</div>
+The lyrics experience also builds on [am-lyrics by binimum](https://github.com/binimum/am-lyrics). Lyrics integrations include [lrc.red](https://lrc.red), [BiniLyrics](https://github.com/binimum), [BetterLyrics](https://github.com/better-lyrics/better-lyrics), [PaxSenix](https://lyrics.paxsenix.org), [LyricsPlus](https://github.com/ibratabian17/YouLyPlus), [SimpMusic](https://github.com/maxrave-dev/SimpMusic), [Unison](https://unison.boidu.dev), [Megalobiz](https://www.megalobiz.com), [KuGou](https://www.kugou.com), [LRCLIB](https://lrclib.net), [Musixmatch](https://www.musixmatch.com), and [Genius](https://genius.com). See the repository’s source files and licence notices for other component attributions.

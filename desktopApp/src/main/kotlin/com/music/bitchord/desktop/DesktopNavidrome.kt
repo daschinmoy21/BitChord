@@ -223,6 +223,14 @@ internal object DesktopNavidromeSource {
         val playlist: com.music.bitchord.data.navidrome.NavidromePlaylist,
     ) {
         val key: String get() = "$PLAYLIST_PREFIX${source.id}/${playlist.id}"
+
+        fun shelfItem(server: DesktopNavidromeClient? = client(source)) = ShelfItem(
+            title = playlist.name.ifBlank { "Untitled playlist" },
+            subtitle = "${playlist.songCount} songs · ${source.displayName}",
+            thumbnailUrl = playlist.coverArt?.takeIf(String::isNotBlank)?.let { server?.coverArtUrl(it) },
+            videoId = null,
+            browseId = key,
+        )
     }
 
     fun parsePlaylist(browseId: String): NavidromeLibrary.Ref? {

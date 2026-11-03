@@ -46,4 +46,24 @@ class LibraryFilterTest {
         assertTrue(listOf(shelf).filterLibrary("target", LibraryFilter.ON_DEVICE).isEmpty())
         assertTrue(listOf(shelf).filterLibrary("unknown", LibraryFilter.ALL).isEmpty())
     }
+    @Test fun navidromeShelfSitsBesideOtherCollectionsAndIsSearchableAsPlaylists() {
+        val server = HomeShelf(NAVIDROME_PLAYLISTS_SHELF, listOf(item("Weekly", "28 songs · Home server")))
+        val base = listOf(HomeShelf("Playlists", listOf(item("Account"))), HomeShelf("Albums", listOf(item("Album"))))
+        val combined = base.withAdditionalLibraryShelves(listOf(server))
+        assertEquals(listOf("Playlists", NAVIDROME_PLAYLISTS_SHELF, "Albums"), combined.map { it.title })
+        assertEquals(listOf(server), combined.filterLibrary("weekly home", LibraryFilter.PLAYLISTS))
+        assertEquals(listOf(server), combined.filterLibrary("weekly", LibraryFilter.ALL))
+        assertEquals(combined, combined.withAdditionalLibraryShelves(listOf(server)))
+        assertTrue(combined.filterLibrary("weekly", LibraryFilter.ALBUMS).isEmpty())
+    }
+
+    @Test fun navidromeIsAvailableWhileSignedOutAndKeepsItsEmptyRefreshSection() {
+        val empty = HomeShelf(NAVIDROME_PLAYLISTS_SHELF, emptyList())
+        val signedOut = emptyList<HomeShelf>().withAdditionalLibraryShelves(listOf(empty))
+        assertEquals(listOf(empty), signedOut.filterLibrary("", LibraryFilter.ALL))
+        assertEquals(listOf(empty), signedOut.filterLibrary("", LibraryFilter.PLAYLISTS))
+        assertTrue(signedOut.filterLibrary("missing", LibraryFilter.ALL).isEmpty())
+        assertTrue(signedOut.filterLibrary("", LibraryFilter.ALBUMS).isEmpty())
+    }
+
 }
