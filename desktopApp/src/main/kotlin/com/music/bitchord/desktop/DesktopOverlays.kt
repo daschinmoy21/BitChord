@@ -28,6 +28,7 @@ internal class DesktopOverlays {
     var listenTogether by mutableStateOf(false)
     var songMenu by mutableStateOf(false)
     var downloadManager by mutableStateOf(false)
+    var notice by mutableStateOf<String?>(null)
     var replay by mutableStateOf(false)
 
     /** The share sheet and the card it is making, or none. */

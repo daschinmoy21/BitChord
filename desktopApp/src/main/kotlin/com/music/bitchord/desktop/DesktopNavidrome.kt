@@ -34,6 +34,7 @@ internal typealias NavidromeSong = com.music.bitchord.data.navidrome.NavidromeSo
 internal object DesktopNavidromeSource {
     private const val TRACK_PREFIX = "navidrome:"
     private const val ALBUM_PREFIX = "navidrome-album:"
+    private const val PLAYLIST_PREFIX = "navidrome-playlist:"
     private const val SEPARATOR = '/'
     private const val ALBUM_LIST = "alphabeticalByName"
 
@@ -213,6 +214,59 @@ internal object DesktopNavidromeSource {
         durationText = row.duration?.let { "${it / 60}:${"%02d".format(Locale.ROOT, it % 60)}" },
         sourceQuality = if (formatOf(row, null).isLossless) DesktopModuleSource.LOSSLESS else null,
     )
+
+    data class ServerPlaylist(
+        val source: DesktopSourceConfig,
+        val playlist: com.music.bitchord.data.navidrome.NavidromePlaylist,
+    ) {
+        val key: String get() = "$PLAYLIST_PREFIX${source.id}/${playlist.id}"
+    }
+
+    fun parsePlaylist(browseId: String): NavidromeLibrary.Ref? {
+        if (!browseId.startsWith(PLAYLIST_PREFIX)) return null
+        val encoded = browseId.removePrefix(PLAYLIST_PREFIX)
+        val at = encoded.indexOf(SEPARATOR)
+        if (at < 1 || at == encoded.lastIndex) return null
+        return NavidromeLibrary.Ref(encoded.substring(0, at), encoded.substring(at + 1))
+    }
+
+    suspend fun playlists(config: DesktopSourceConfig): List<ServerPlaylist> {
+        val server = client(config) ?: error("No login saved for this server")
+        return server.playlists().getOrThrow().filter { it.id.isNotBlank() }
+            .map { ServerPlaylist(config, it) }
+    }
+
+    suspend fun starredIds(config: DesktopSourceConfig): Set<String> {
+        val server = client(config) ?: error("No login saved for this server")
+        return server.starredSongs().getOrThrow().filter { it.id.isNotBlank() }
+            .mapTo(mutableSetOf()) { trackKey(config.id, it.id) }
+    }
+
+    suspend fun setStarred(ref: TrackRef, starred: Boolean): Result<Unit> {
+        val config = DesktopSourceRegistry.navidromeConfig(ref.sourceId)?.takeIf { it.enabled && it.isComplete }
+            ?: return Result.failure(IllegalStateException("That server is disabled or no longer set up"))
+        return client(config)?.setStarred(ref.trackId, starred)
+            ?: Result.failure(IllegalStateException("No login saved for this server"))
+    }
+
+    suspend fun openPlaylist(ref: NavidromeLibrary.Ref): DesktopCollection {
+        val config = DesktopSourceRegistry.navidromeConfig(ref.sourceId)?.takeIf { it.enabled && it.isComplete }
+            ?: error("That server is disabled or no longer set up")
+        val server = client(config) ?: error("No login saved for this server")
+        val playlist = server.playlist(ref.id).getOrThrow()
+        val songs = playlist.entry.filter { it.id.isNotBlank() }.map { row ->
+            rows["${config.id}$SEPARATOR${row.id}"] = row
+            songOf(config.id, server, row)
+        }
+        return DesktopCollection(
+            browseId = "$PLAYLIST_PREFIX${config.id}/${ref.id}",
+            title = playlist.name.ifBlank { "Untitled playlist" },
+            subtitle = "Playlist • ${songs.size} songs · ${config.displayName}",
+            thumbnailUrl = playlist.coverArt?.let(server::coverArtUrl) ?: songs.firstOrNull()?.thumbnailUrl,
+            type = BrowseType.PLAYLIST,
+            songs = songs,
+        )
+    }
 
     /** Reports a play to the server that served it. */
     suspend fun report(config: DesktopSourceConfig, trackId: String, submission: Boolean, atMs: Long? = null) {

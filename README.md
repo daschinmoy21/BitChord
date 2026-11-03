@@ -135,6 +135,17 @@ podcasts and on-device collections. Search matches collection names and artist c
 and also queries YouTube Music and enabled Navidrome servers. Results are grouped by source.
 The refresh button beside search refetches saved collections and Navidrome albums.
 
+On desktop, use **Navidrome playlists** in the sidebar or Library’s Playlists section
+to browse all playlists from enabled servers. Playlists open directly from Navidrome; the
+list and open playlist refresh automatically every minute, and reopening fetches current tracks.
+Hearts on Navidrome tracks update the server’s favourites; existing server favourites are loaded automatically.
+
+In a desktop playlist’s **⋯** menu, choose **Download and keep updated** for an ordered offline
+copy in your local playlists. BitChord checks for changes hourly while open and on startup.
+Use **Sync now** to check immediately or approve an update larger than 50 new songs.
+**Stop automatic downloads** keeps the offline copy and existing files. Tracks you delete stay
+deleted; tracks removed from the online playlist keep their audio files in Downloads.
+
 On Android, open **Settings → Sources → Add Navidrome** to connect your server. Enter its
 address, username and password, then test and save. Albums appear in Library even when
 signed out of YouTube; artist search results open the artist’s albums. The saved login
