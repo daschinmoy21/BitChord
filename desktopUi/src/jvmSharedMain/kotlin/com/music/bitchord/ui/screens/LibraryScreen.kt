@@ -144,8 +144,9 @@ fun LibraryScreen(
     searchCatalog: (suspend (String, SearchFilter) -> LibraryCatalogResult)? = null,
     searchRevision: Any? = null,
     sourceError: String? = null,
-    /** Platform-specific playlist browser displayed alongside the playlist shelf. */
-    playlistBrowser: @Composable () -> Unit = {},
+    additionalShelves: List<HomeShelf> = emptyList(),
+    shelfHeaderActions: @Composable (HomeShelf) -> Unit = {},
+    shelfStatus: @Composable (HomeShelf) -> Unit = {},
 ) {
     val pinnedPlaylists by AppUi.host.pinnedPlaylists.collectAsStateWithLifecycle()
     val onDevice = stringResource(Res.string.on_device)
@@ -168,7 +169,8 @@ fun LibraryScreen(
         }
     }
     val filtering = query.isNotBlank() || filter != LibraryFilter.ALL
-    val sourceShelves = if (signedIn) (state as? UiState.Success)?.data?.shelves.orEmpty() else signedOutShelves
+    val sourceShelves = (if (signedIn) (state as? UiState.Success)?.data?.shelves.orEmpty() else signedOutShelves)
+        .withAdditionalLibraryShelves(additionalShelves)
     val shelves = remember(sourceShelves, query, filter) { sourceShelves.filterLibrary(query, filter) }
     val catalogShelves = remember(catalog, shelves) {
         val shown = shelves.flatMap { it.items }.map { it.videoId ?: it.browseId }.toSet()
@@ -261,7 +263,7 @@ fun LibraryScreen(
                         onImportSpotifyPlaylist = onImportSpotifyPlaylist,
                         onShowAll = { searchState.collectionQuery = ""; onShowAll(emptyPlaylists) },
                     )
-                    playlistBrowser()
+
                 }
             }
             shelves.forEach { shelf ->
@@ -277,7 +279,7 @@ fun LibraryScreen(
                             onShowAll = { openShelf(shelf) },
                             pinnedPlaylists = pinnedPlaylists,
                         )
-                        playlistBrowser()
+
                     } else {
                         LibraryGridShelf(
                             shelf = pinnedFirst,
@@ -285,6 +287,8 @@ fun LibraryScreen(
                             onItemLongPress = onShelfItemLongPress,
                             onShowAll = { openShelf(shelf) },
                             pinnedPlaylists = pinnedPlaylists,
+                            headerActions = { shelfHeaderActions(shelf) },
+                            status = { shelfStatus(shelf) },
                         )
                     }
                 }
@@ -534,6 +538,8 @@ internal fun LibraryGridShelf(
     leadingCard: (@Composable (Dp) -> Unit)? = null,
     leadingCardCount: Int = if (leadingCard != null) 1 else 0,
     pinnedPlaylists: List<String> = emptyList(),
+    headerActions: @Composable () -> Unit = {},
+    status: @Composable () -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
@@ -541,9 +547,11 @@ internal fun LibraryGridShelf(
         Column(Modifier.padding(bottom = 26.dp)) {
             SectionHeader(
                 title = shelf.title,
+                actions = headerActions,
                 subtitle = shelf.subtitle,
                 onShowAll = onShowAll.takeIf { shelf.items.size + leadingCardCount > grid.columns },
             )
+            status()
             ShelfRow(
                 contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
                 horizontalArrangement = Arrangement.spacedBy(LIBRARY_GRID_SPACING),

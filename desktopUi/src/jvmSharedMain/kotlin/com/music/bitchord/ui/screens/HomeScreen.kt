@@ -567,7 +567,7 @@ private const val LOGO_ASPECT = 730f / 484f
  * Home and Explore never pass it, so their heading is unchanged.
  */
 @Composable
-internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null) {
+internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
     val displayTitle = localizeShelfTitle(title)
     val displaySubtitle = localizeShelfSubtitle(subtitle)
     Row(
@@ -594,6 +594,7 @@ internal fun SectionHeader(title: String, subtitle: String = "", onShowAll: (() 
                 )
             }
         }
+        actions()
         if (onShowAll != null) {
             Text(
                 text = stringResource(Res.string.show_all),

@@ -36,6 +36,7 @@ import com.music.bitchord.ui.screens.HomeScreen
 import com.music.bitchord.ui.screens.CompactTrackRow
 import com.music.bitchord.ui.screens.LibraryGridPage
 import com.music.bitchord.ui.screens.LibraryLink
+import com.music.bitchord.ui.screens.NAVIDROME_PLAYLISTS_SHELF
 import com.music.bitchord.ui.screens.LibraryScreen
 import com.music.bitchord.ui.screens.rememberLibrarySearchState
 import com.music.bitchord.data.LibrarySearchProvider
@@ -912,6 +913,14 @@ fun BitChordDesktopApp() {
     var serverPlaylistsLoading by remember { mutableStateOf(true) }
     var serverPlaylistsError by remember { mutableStateOf<String?>(null) }
     var serverPlaylistsRevision by remember { mutableStateOf(0) }
+    var navidromePlaylistsExpanded by remember { mutableStateOf(persistence.boolean("navidrome_playlists_expanded", true)) }
+    val hasNavidromePlaylists = sourceConfigs.any { it.kind == DesktopSourceKind.NAVIDROME && it.enabled && it.isComplete }
+    val serverPlaylistShelf = remember(serverPlaylists, sourceConfigs) {
+        HomeShelf(NAVIDROME_PLAYLISTS_SHELF, serverPlaylists.map { it.shelfItem() })
+    }
+    LaunchedEffect(serverPlaylistShelf) {
+        if (libraryShowAll?.title == NAVIDROME_PLAYLISTS_SHELF) libraryShowAll = serverPlaylistShelf
+    }
     LaunchedEffect(sourceConfigs, sessionRevision, serverPlaylistsRevision) {
         val servers = sourceConfigs.filter { it.kind == DesktopSourceKind.NAVIDROME && it.enabled && it.isComplete }
         val activeIds = servers.map { it.id }.toSet()
@@ -2796,6 +2805,9 @@ fun BitChordDesktopApp() {
         }
         val browseId = item.browseId.orEmpty()
         when {
+            DesktopNavidromeSource.parsePlaylist(browseId) != null -> {
+                serverPlaylists.firstOrNull { it.key == browseId }?.let(::openNavidromePlaylist)
+            }
             browseId == "spotify:library" -> selectDestination(DesktopDestination.SPOTIFY)
             browseId == LOCAL_DOWNLOADS_ID -> selectDestination(DesktopDestination.DOWNLOADS)
             browseId == LOCAL_MUSIC_ID -> selectDestination(DesktopDestination.LOCAL_MUSIC)
@@ -3782,16 +3794,18 @@ fun BitChordDesktopApp() {
                         settingsOpen = overlays.settingsPage != null,
                         accountPlaylists = sidebarAccountPlaylists,
                         localPlaylists = playlists,
-                        navidromePlaylists = {
-                            DesktopNavidromePlaylistDropdown(
-                                configs = sourceConfigs,
-                                playlists = serverPlaylists,
-                                loading = serverPlaylistsLoading,
-                                error = serverPlaylistsError,
-                                onRefresh = ::refreshNavidromePlaylists,
-                                onOpen = ::openNavidromePlaylist,
-                            )
+                        navidromePlaylists = serverPlaylists,
+                        navidromeEnabled = hasNavidromePlaylists,
+                        navidromeExpanded = navidromePlaylistsExpanded,
+                        navidromeLoading = serverPlaylistsLoading,
+                        navidromeError = serverPlaylistsError,
+                        onToggleNavidrome = {
+                            navidromePlaylistsExpanded = !navidromePlaylistsExpanded
+                            persistence.saveBoolean("navidrome_playlists_expanded", navidromePlaylistsExpanded)
+                            if (navidromePlaylistsExpanded) refreshNavidromePlaylists()
                         },
+                        onRefreshNavidrome = ::refreshNavidromePlaylists,
+                        onOpenNavidromePlaylist = ::openNavidromePlaylist,
                         openedCollectionId = openedCollection?.browseId,
                         query = query,
                         onQueryChange = { text ->
@@ -4816,6 +4830,9 @@ fun BitChordDesktopApp() {
                                     }
                                 }
                                 Spacer(Modifier.weight(1f))
+                                if (openShelf.title == NAVIDROME_PLAYLISTS_SHELF) {
+                                    DesktopNavidromeRefreshButton(serverPlaylistsLoading, ::refreshNavidromePlaylists)
+                                }
                                 DesktopLibrarySortMenu()
                             }
                             LibraryGridPage(
@@ -4854,16 +4871,25 @@ fun BitChordDesktopApp() {
                             onShelfItemClick = ::openLibraryItem,
                             onShelfItemLongPress = { item -> if (item.videoId != null) openMenu(item.toSong()) },
                             onNewPlaylist = { overlays.playlistDialog = true },
-                            playlistBrowser = {
-                                Box(Modifier.padding(horizontal = PAGE_GUTTER)) {
-                                    DesktopNavidromePlaylistDropdown(
-                                        configs = sourceConfigs,
-                                        playlists = serverPlaylists,
-                                        loading = serverPlaylistsLoading,
-                                        error = serverPlaylistsError,
-                                        onRefresh = ::refreshNavidromePlaylists,
-                                        onOpen = ::openNavidromePlaylist,
-                                    )
+                            additionalShelves = if (hasNavidromePlaylists) listOf(serverPlaylistShelf) else emptyList(),
+                            shelfHeaderActions = { shelf ->
+                                if (shelf.title == NAVIDROME_PLAYLISTS_SHELF) {
+                                    DesktopNavidromeRefreshButton(serverPlaylistsLoading, ::refreshNavidromePlaylists)
+                                }
+                            },
+                            shelfStatus = { shelf ->
+                                if (shelf.title == NAVIDROME_PLAYLISTS_SHELF) {
+                                    val message = serverPlaylistsError ?: if (shelf.items.isEmpty()) {
+                                        if (serverPlaylistsLoading) "Loading playlists…" else "No playlists on your Navidrome servers yet."
+                                    } else null
+                                    message?.let {
+                                        Text(
+                                            it,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (serverPlaylistsError != null) DesktopDestructive else DesktopSecondary,
+                                            modifier = Modifier.padding(horizontal = PAGE_GUTTER, vertical = 8.dp),
+                                        )
+                                    }
                                 }
                             },
                             onShowAll = { shelf -> libraryShowAll = shelf },
@@ -5310,7 +5336,14 @@ private fun DesktopSidebar(
     settingsOpen: Boolean,
     accountPlaylists: List<ShelfItem>,
     localPlaylists: List<DesktopPlaylist>,
-    navidromePlaylists: @Composable () -> Unit,
+    navidromePlaylists: List<DesktopNavidromeSource.ServerPlaylist>,
+    navidromeEnabled: Boolean,
+    navidromeExpanded: Boolean,
+    navidromeLoading: Boolean,
+    navidromeError: String?,
+    onToggleNavidrome: () -> Unit,
+    onRefreshNavidrome: () -> Unit,
+    onOpenNavidromePlaylist: (DesktopNavidromeSource.ServerPlaylist) -> Unit,
     openedCollectionId: String?,
     query: String,
     onQueryChange: (String) -> Unit,
@@ -5446,7 +5479,32 @@ private fun DesktopSidebar(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(bottom = 8.dp),
             ) {
-                item(key = "navidrome:import") { navidromePlaylists() }
+                if (navidromeEnabled) {
+                    item(key = "navidrome:heading") {
+                        DesktopNavidromePlaylistHeading(navidromeExpanded, navidromeLoading, onToggleNavidrome, onRefreshNavidrome)
+                    }
+                    if (navidromeExpanded) {
+                        if (navidromeError != null || navidromePlaylists.isEmpty()) item(key = "navidrome:status") {
+                            Text(
+                                navidromeError ?: if (navidromeLoading) "Loading playlists…" else "No playlists yet",
+                                color = if (navidromeError != null) DesktopDestructive else DesktopSecondary,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(start = 18.dp, end = 9.dp, bottom = 8.dp),
+                            )
+                        }
+                        items(navidromePlaylists, key = { it.key }) { ref ->
+                            Box(Modifier.padding(start = 9.dp)) {
+                                DesktopSidebarItem(
+                                    Icons.AutoMirrored.Rounded.PlaylistPlay,
+                                    ref.playlist.name.ifBlank { "Untitled playlist" },
+                                    openedCollectionId == ref.key,
+                                    subtitle = "${ref.playlist.songCount} songs · ${ref.source.displayName}",
+                                ) { onOpenNavidromePlaylist(ref) }
+                            }
+                        }
+                    }
+                    item(key = "navidrome:spacing") { Spacer(Modifier.height(8.dp)) }
+                }
                 items(visibleAccount, key = { "account:${it.browseId}" }) { playlist ->
                     DesktopSidebarItem(
                         Icons.AutoMirrored.Rounded.PlaylistPlay,
@@ -5467,7 +5525,7 @@ private fun DesktopSidebar(
                         onHide = { DesktopSidebarVisibility.hide("local:${playlist.id}", playlist.title) },
                     )
                 }
-                if (visibleAccount.isEmpty() && visibleLocal.isEmpty()) {
+                if (visibleAccount.isEmpty() && visibleLocal.isEmpty() && navidromePlaylists.isEmpty()) {
                     item {
                         Text(
                             "Your playlists will appear here",
@@ -5507,6 +5565,7 @@ private fun DesktopSidebarItem(
     shortcut: Int? = null,
     /** When set, a right-click offers to hide the row — see [DesktopSidebarVisibility]. */
     onHide: (() -> Unit)? = null,
+    subtitle: String? = null,
     onClick: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -5537,14 +5596,18 @@ private fun DesktopSidebarItem(
         ) {
             Icon(icon, label, tint = if (selected) DesktopAccent else DesktopSecondary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
-            Text(
-                label,
-                color = if (selected) Color.White else DesktopSecondary,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    label,
+                    color = if (selected) Color.White else DesktopSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                subtitle?.let {
+                    Text(it, color = DesktopSecondary, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
             if (shortcut != null) DesktopKeyChip("Ctrl $shortcut")
         }
         if (onHide != null) {

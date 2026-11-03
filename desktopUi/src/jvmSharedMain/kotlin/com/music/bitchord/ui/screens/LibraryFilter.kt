@@ -10,6 +10,8 @@ import com.music.bitchord.data.YtMusicRepository
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.ShelfItem
 
+const val NAVIDROME_PLAYLISTS_SHELF = "Navidrome playlists"
+
 /** Kept by each app so opening a collection and returning preserves the search. */
 class LibrarySearchState internal constructor(query: String = "", filter: LibraryFilter = LibraryFilter.ALL) {
     var query by mutableStateOf(query)
@@ -32,7 +34,7 @@ internal enum class LibraryFilter {
 
     fun includes(shelf: HomeShelf): Boolean = when (this) {
         ALL -> true
-        PLAYLISTS -> shelf.title == YtMusicRepository.PLAYLISTS_SHELF
+        PLAYLISTS -> shelf.title == YtMusicRepository.PLAYLISTS_SHELF || shelf.title == NAVIDROME_PLAYLISTS_SHELF
         ALBUMS -> shelf.title == "Albums"
         ARTISTS -> shelf.title == "Artists" || shelf.title == "Subscriptions"
         PODCASTS -> shelf.title == "Podcasts"
@@ -54,4 +56,14 @@ internal fun List<ShelfItem>.matchingLibraryQuery(query: String): List<ShelfItem
 internal fun List<HomeShelf>.filterLibrary(query: String, filter: LibraryFilter): List<HomeShelf> =
     filter { filter.includes(it) }
         .map { it.copy(items = it.items.matchingLibraryQuery(query)) }
-        .filter { it.items.isNotEmpty() }
+        .filter { it.items.isNotEmpty() || query.isBlank() && it.title == NAVIDROME_PLAYLISTS_SHELF }
+
+/** Insert platform libraries after account playlists, leaving their full contents available to search. */
+internal fun List<HomeShelf>.withAdditionalLibraryShelves(additional: List<HomeShelf>): List<HomeShelf> {
+    if (additional.isEmpty()) return this
+    val names = additional.map { it.title }.toSet()
+    val next = filterNot { it.title in names }.toMutableList()
+    val after = next.indexOfFirst { it.title == YtMusicRepository.PLAYLISTS_SHELF }
+    next.addAll(if (after >= 0) after + 1 else 0, additional)
+    return next
+}
